@@ -23,12 +23,7 @@ from snnqc.data_loader import (
     read_uploaded_csv,
     sample_csv_template,
 )
-from snnqc.plots import (
-    feature_layout_figure,
-    feature_spike_density_figure,
-    is_eeg_data,
-    raw_and_spike_figure,
-)
+from snnqc.plots import feature_layout_figure, raw_and_spike_figure
 
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.linear_model import LogisticRegression
@@ -428,6 +423,40 @@ def encode_dataset(X_raw, thresh, normalize=False):
         X_raw = (X_raw - mean) / std
     encoder = Delta(threshold=thresh)
     return encoder.encode_dataset(X_raw)
+
+
+_STANDARD_10_20 = {
+    "AF3", "O2", "F7", "P8", "F3", "T8", "FC5", "FC6",
+    "T7", "F4", "P7", "F8", "O1", "AF4",
+}
+
+def is_eeg_data(feature_names):
+    return any(str(n).replace("*", "") in _STANDARD_10_20 for n in feature_names)
+
+
+def feature_spike_density_figure(X_encoded, feature_names):
+    arr = X_encoded.numpy() if hasattr(X_encoded, "numpy") else np.asarray(X_encoded, dtype=float)
+    density = arr.mean(axis=(0, 1))
+    n = len(feature_names)
+    colors = plt.cm.plasma(np.linspace(0.25, 0.85, n))
+    fig, ax = plt.subplots(figsize=(max(7, n * 0.6), 3.8))
+    ax.bar(range(n), density, color=colors, edgecolor="none", width=0.72)
+    ax.set_xticks(range(n))
+    ax.set_xticklabels(feature_names, rotation=45, ha="right", fontsize=9)
+    ax.set_ylabel("Mean Spike Density", fontsize=9)
+    ax.set_title("Spike Activity per Feature", fontsize=11)
+    ax.set_ylim(0, max(float(density.max()) * 1.3, 0.02))
+    ax.grid(axis="y", alpha=0.25, linestyle="--")
+    bg = "#0C0C18"
+    fig.patch.set_facecolor(bg)
+    ax.set_facecolor(bg)
+    ax.yaxis.label.set_color("#F1F5F9")
+    ax.title.set_color("#F1F5F9")
+    ax.tick_params(colors="#94A3B8")
+    for spine in ax.spines.values():
+        spine.set_edgecolor((148/255, 163/255, 184/255, 0.15))
+    plt.tight_layout()
+    return fig
 
 
 # ── Data render helpers ───────────────────────────────────────────────────────
