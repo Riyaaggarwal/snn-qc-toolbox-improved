@@ -3,18 +3,23 @@ import torch
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
-import seaborn as sns
 import os
 import pennylane as qml
 import random
-from tqdm import tqdm
 import plotly.graph_objects as go
 import base64
+
+from snnqc.data_loader import (
+    DEFAULT_FEATURE_NAMES,
+    load_builtin_eeg_dataset as load_builtin_eeg_dataset_uncached,
+    parse_combined_csv,
+    parse_sample_csvs,
+    read_uploaded_csv,
+)
 
 # --- SKLEARN IMPORTS ---
 from sklearn.metrics import accuracy_score as accuracy, confusion_matrix, ConfusionMatrixDisplay
 from sklearn.model_selection import KFold
-from sklearn.linear_model import LogisticRegression
 from sklearn.preprocessing import StandardScaler
 from sklearn.svm import SVC
 
@@ -22,11 +27,8 @@ from sklearn.svm import SVC
 try:
     from neucube import Reservoir
     from neucube.encoder import Delta
-    from neucube.validation import Pipeline
     from neucube.sampler import SpikeCount
     from neucube.training import STDP
-    from neucube.sampler.channel_sampler import ChannelContributionSampler
-    from neucube.visualise import spike_raster, plot_connections
     from neucube.qfeatures import extract_features
     from neucube.qkernel import kernel_matrix, kernel
 except ImportError as e:
@@ -43,10 +45,6 @@ np.random.seed(SEED)
 random.seed(SEED)
 torch.manual_seed(SEED)
 
-DEFAULT_FEATURE_NAMES = [
-    "AF3*", "F7*", "F3*", "FC5*", "T7*", "P7*", "O1*", 
-    "O2*", "P8*", "T8*", "FC6*", "F4*", "F8*", "AF4*"
-]
 DATASET_STATE_KEYS = [
     "X_raw", "X", "y", "feature_names", "dataset_name", "data_ready",
     "map_initialised", "features_ready", "snn_features"
@@ -89,29 +87,7 @@ st.sidebar.info(
 # ==========================================
 @st.cache_data
 def load_builtin_eeg_dataset():
-    """Loads the bundled EEG demo dataset as a raw tensor."""
-    base_path = './example_data/wrist_movement_eeg/'
-    
-    if not os.path.exists(base_path):
-        return None, None, DEFAULT_FEATURE_NAMES, f"Path not found: {base_path}"
-
-    filenameslist = ['sam'+str(idx)+'_eeg.csv' for idx in range(1,61)]
-    dfs = []
-    
-    try:
-        for filename in filenameslist:
-            full_path = os.path.join(base_path, filename)
-            dfs.append(pd.read_csv(full_path, header=None))
-    except FileNotFoundError as e:
-        return None, None, DEFAULT_FEATURE_NAMES, f"Missing File: {e}"
-
-    fulldf = pd.concat(dfs)
-    labels_path = os.path.join(base_path, 'tar_class_labels.csv')
-    labels = pd.read_csv(labels_path, header=None)
-    y_all = labels.values.flatten()
-
-    X_raw = torch.tensor(fulldf.values.reshape(60, 128, 14), dtype=torch.float32)
-    return X_raw, y_all, DEFAULT_FEATURE_NAMES, None
+    return load_builtin_eeg_dataset_uncached()
 
 def encode_dataset(X_raw, thresh):
     encoder = Delta(threshold=thresh)
@@ -120,81 +96,6 @@ def encode_dataset(X_raw, thresh):
 def reset_dataset_state():
     for key in DATASET_STATE_KEYS:
         st.session_state.pop(key, None)
-
-def read_uploaded_csv(uploaded_file, has_header):
-    if uploaded_file is None:
-        return None
-    uploaded_file.seek(0)
-    header = 0 if has_header else None
-    return pd.read_csv(uploaded_file, header=header)
-
-def parse_combined_csv(df, sample_col, label_col, time_col, feature_cols):
-    if df is None:
-        return None, None, None, "Upload a combined CSV file first."
-    if not sample_col or not label_col:
-        return None, None, None, "Choose sample and label columns."
-    if not feature_cols:
-        return None, None, None, "Choose at least one feature column."
-
-    working = df.copy()
-    if time_col and time_col != "(none)":
-        working = working.sort_values([sample_col, time_col])
-    else:
-        working = working.sort_values(sample_col)
-
-    samples = []
-    labels = []
-    expected_timepoints = None
-
-    for _, group in working.groupby(sample_col, sort=False):
-        feature_values = group[feature_cols].apply(pd.to_numeric, errors="coerce")
-        if feature_values.isna().any().any():
-            return None, None, None, "Feature columns must be numeric and cannot contain blank values."
-        if expected_timepoints is None:
-            expected_timepoints = len(feature_values)
-        elif len(feature_values) != expected_timepoints:
-            return None, None, None, "Every sample must have the same number of timepoints."
-
-        samples.append(feature_values.to_numpy(dtype=np.float32))
-        labels.append(group[label_col].iloc[0])
-
-    if len(samples) < 2:
-        return None, None, None, "At least two samples are required."
-
-    X_raw = torch.tensor(np.stack(samples), dtype=torch.float32)
-    return X_raw, np.array(labels), list(feature_cols), None
-
-def parse_sample_csvs(sample_files, labels_df, has_header):
-    if not sample_files:
-        return None, None, None, "Upload at least two sample CSV files."
-    if labels_df is None:
-        return None, None, None, "Upload a labels CSV file."
-
-    sorted_files = sorted(sample_files, key=lambda file_obj: file_obj.name)
-    labels = labels_df.iloc[:, -1].values
-    if len(labels) != len(sorted_files):
-        return None, None, None, "The labels CSV must contain exactly one label per sample file."
-
-    samples = []
-    feature_names = None
-    expected_shape = None
-    header = 0 if has_header else None
-
-    for uploaded_file in sorted_files:
-        uploaded_file.seek(0)
-        df = pd.read_csv(uploaded_file, header=header)
-        values = df.apply(pd.to_numeric, errors="coerce")
-        if values.isna().any().any():
-            return None, None, None, f"{uploaded_file.name} contains non-numeric or blank feature values."
-        if expected_shape is None:
-            expected_shape = values.shape
-            feature_names = [str(col) for col in values.columns]
-        elif values.shape != expected_shape:
-            return None, None, None, "All sample CSV files must have the same rows x features shape."
-        samples.append(values.to_numpy(dtype=np.float32))
-
-    X_raw = torch.tensor(np.stack(samples), dtype=torch.float32)
-    return X_raw, labels, feature_names, None
 
 def load_sensor_locations():
     """
