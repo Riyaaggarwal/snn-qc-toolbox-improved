@@ -42,7 +42,7 @@ except ImportError as e:
     st.stop()
 
 # --- PAGE CONFIGURATION ---
-st.set_page_config(page_title="SNN-QC", layout="wide", page_icon="🧠")
+st.set_page_config(page_title="SpikeSense Studio", layout="wide", page_icon="📈")
 
 # --- SEED CONFIGURATION ---
 SEED = 42
@@ -50,6 +50,8 @@ np.random.seed(SEED)
 random.seed(SEED)
 torch.manual_seed(SEED)
 
+APP_NAME = "SpikeSense Studio"
+APP_TAGLINE = "Time-series classification with spiking features and explainable model results."
 DATASET_STATE_KEYS = [
     "X_raw", "X", "y", "feature_names", "dataset_name", "data_ready",
     "map_initialised", "features_ready", "snn_features"
@@ -59,33 +61,66 @@ DERIVED_STATE_KEYS = ["map_initialised", "features_ready", "snn_features"]
 st.markdown(
     """
     <style>
-        .block-container { padding-top: 2rem; }
+        .stApp { background: #f8fafc; }
+        .block-container { padding-top: 1.4rem; max-width: 1180px; }
         .snnqc-hero {
-            border: 1px solid rgba(49, 51, 63, 0.18);
+            border: 1px solid rgba(15, 23, 42, 0.10);
             border-radius: 8px;
-            padding: 1.25rem 1.5rem;
-            margin-bottom: 1rem;
-            background: linear-gradient(180deg, rgba(248, 250, 252, 0.95), rgba(241, 245, 249, 0.78));
+            padding: 1.4rem 1.6rem;
+            margin-bottom: 1.15rem;
+            background: #ffffff;
+            box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
         }
         .snnqc-hero h1 {
-            font-size: 2rem;
+            font-size: 2.1rem;
             line-height: 1.15;
             margin: 0 0 0.35rem 0;
             letter-spacing: 0;
+            color: #0f172a;
         }
         .snnqc-hero p {
             color: #475569;
             font-size: 1rem;
             margin: 0;
         }
+        .snnqc-eyebrow {
+            color: #2563eb;
+            font-size: 0.78rem;
+            font-weight: 700;
+            letter-spacing: 0.08em;
+            text-transform: uppercase;
+            margin-bottom: 0.35rem;
+        }
         .snnqc-stage-note {
             color: #64748b;
             font-size: 0.92rem;
         }
+        [data-testid="stMetric"] {
+            background: #ffffff;
+            border: 1px solid rgba(15, 23, 42, 0.08);
+            border-radius: 8px;
+            padding: 0.85rem 0.95rem;
+        }
+        div[data-testid="stExpander"] {
+            background: #ffffff;
+            border-radius: 8px;
+        }
+        section[data-testid="stSidebar"] {
+            background: #0f172a;
+        }
+        section[data-testid="stSidebar"] * {
+            color: #e2e8f0;
+        }
+        section[data-testid="stSidebar"] .stSlider label,
+        section[data-testid="stSidebar"] .stNumberInput label,
+        section[data-testid="stSidebar"] .stSelectbox label {
+            color: #e2e8f0 !important;
+        }
     </style>
     <div class="snnqc-hero">
-        <h1>SNN-QC Workbench</h1>
-        <p>Upload labelled time-series data, extract NeuCube-inspired spiking features, and compare classical and quantum classifiers.</p>
+        <div class="snnqc-eyebrow">Predictive signal intelligence</div>
+        <h1>SpikeSense Studio</h1>
+        <p>Turn labelled time-series data into spiking features, model comparisons, and exportable decision reports.</p>
     </div>
     """,
     unsafe_allow_html=True,
@@ -93,10 +128,10 @@ st.markdown(
 
 
 def render_help_page():
-    st.markdown("## Help & App Info")
+    st.markdown("## Help & Product Info")
     st.write(
-        "SNN-QC is a workbench for exploring time-series classification with spike encoding, "
-        "NeuCube-style reservoir dynamics, spiking feature extraction, and classical or quantum classifiers."
+        f"{APP_NAME} helps teams explore labelled time-series classification with spiking feature extraction, "
+        "classical model baselines, and an optional quantum-kernel comparison."
     )
 
     tab_overview, tab_data, tab_pipeline, tab_results, tab_about = st.tabs(
@@ -107,11 +142,11 @@ def render_help_page():
         st.markdown(
             """
             ### What this app is for
-            Use this app when you have labelled time-series samples and want to test whether spiking
-            neural network features help separate classes.
+            Use this app when you have labelled signal, sensor, biomedical, operational, or experimental
+            time-series samples and want to test whether spiking features help separate classes.
 
-            The built-in EEG dataset is a reference demo. Uploaded datasets can come from EEG,
-            sensors, wearables, industrial monitoring, finance, or any other repeated time-series source.
+            The built-in EEG dataset is a reference demo. Uploaded datasets can come from sensors,
+            wearables, industrial monitoring, health signals, finance, or any repeated time-series source.
 
             ### Current scope
             - Works best with clean, regularly sampled time-series data.
@@ -124,14 +159,14 @@ def render_help_page():
     with tab_data:
         st.markdown(
             """
-            ### Single combined CSV
+            ### Single uploaded table
             Use one row per sample-timepoint. Include:
             - a sample ID column
             - a label column
             - an optional time/order column
             - one or more numeric feature columns
 
-            ### Multiple sample CSVs
+            ### Multiple sample files
             Use one CSV per sample. Every sample CSV must have the same rows and columns.
             Upload a separate labels CSV with one label per sample file. Labels are matched to files
             in sorted filename order.
@@ -199,7 +234,7 @@ def render_help_page():
                https://doi.org/10.1016/j.neunet.2014.01.006
 
             ### Product direction
-            This workbench is being shaped into a reusable research product: clear data onboarding,
+            SpikeSense Studio is being shaped into a reusable analysis product: clear data onboarding,
             reproducible configuration export, interpretable metrics, and downloadable feature tables.
             """
         )
@@ -319,7 +354,7 @@ def render_workflow_dashboard():
     st.info(f"Next step: {next_step}")
 
     tab_data, tab_encoding, tab_simulation, tab_features, tab_results = st.tabs(
-        ["Data", "Encoding", "Simulation", "Features", "Results"]
+        ["1 Data", "2 Prepare", "3 Analyze", "4 Features", "5 Report"]
     )
 
     with tab_data:
@@ -341,7 +376,7 @@ def render_workflow_dashboard():
 
     with tab_encoding:
         status = "Encoded" if data_ready else "Waiting for data"
-        st.metric("Spike Encoding", status)
+        st.metric("Signal Preparation", status)
         st.caption(f"Current Delta threshold: {threshold_val}")
         if data_ready:
             X = st.session_state["X"]
@@ -351,8 +386,8 @@ def render_workflow_dashboard():
             st.caption("Encoding preview appears after data loading.")
 
     with tab_simulation:
-        status = "Features extracted" if features_ready else "Mapping ready" if map_ready else "Waiting"
-        st.metric("NeuCube Simulation", status)
+        status = "Features extracted" if features_ready else "Engine ready" if map_ready else "Waiting"
+        st.metric("Analysis Engine", status)
         col_a, col_b, col_c = st.columns(3)
         col_a.metric("Reservoir C", res_c)
         col_b.metric("Reservoir L", res_l)
@@ -360,7 +395,7 @@ def render_workflow_dashboard():
 
     with tab_features:
         status = "Ready" if features_ready else "Not available"
-        st.metric("SNN Features", status)
+        st.metric("Spiking Features", status)
         if features_ready:
             st.write(f"Extracted feature matrix: `{st.session_state['snn_features'].shape}`")
             st.caption("Use the Features section below to download the extracted feature table.")
@@ -369,7 +404,7 @@ def render_workflow_dashboard():
 
     with tab_results:
         status = "Ready to classify" if features_ready else "Waiting for features"
-        st.metric("Classification", status)
+        st.metric("Model Report", status)
         st.caption("Classical classifiers support multiclass use. Quantum Kernel SVM is currently binary and two-feature.")
         if data_ready:
             st.download_button(
@@ -382,7 +417,7 @@ def render_workflow_dashboard():
 
 def current_experiment_config():
     config = {
-        "app": "SNN-QC Workbench",
+        "app": APP_NAME,
         "dataset": st.session_state.get("dataset_name"),
         "data_ready": st.session_state.get("data_ready", False),
         "map_initialised": st.session_state.get("map_initialised", False),
@@ -416,26 +451,23 @@ def current_experiment_config():
     return config
 
 
-page = st.sidebar.radio("Page", ["Workbench", "Help & App Info"])
-if page == "Help & App Info":
+page = st.sidebar.radio("Navigation", ["Studio", "Help & Product Info"])
+if page == "Help & Product Info":
     render_help_page()
     st.stop()
 
 
-# ==========================================
-# 1. SIDEBAR PARAMETERS
-# ==========================================
-st.sidebar.header("1. NeuCube Hyperparameters")
-threshold_val = st.sidebar.slider("Delta Threshold", 0.1, 1.5, 0.8, 0.05)
-res_c = st.sidebar.slider("Reservoir C", 0.1, 1.0, 0.4, 0.05)
-res_l = st.sidebar.slider("Reservoir L", 0.01, 1.0, 0.169, 0.001)
-stdp_pos = st.sidebar.number_input("STDP a_pos", value=0.001, format="%.4f")
-stdp_neg = st.sidebar.number_input("STDP a_neg", value=-0.01, format="%.4f")
-mem_thr_val = st.sidebar.number_input("Membrane Threshold", value=0.01, format="%.3f")
+st.sidebar.header("Analysis Settings")
+threshold_val = st.sidebar.slider("Spike sensitivity", 0.1, 1.5, 0.8, 0.05)
+k_folds = st.sidebar.slider("Validation folds", 2, 10, 5)
+svm_c = st.sidebar.number_input("Model flexibility", value=1.0)
 
-st.sidebar.header("2. Model Settings")
-svm_c = st.sidebar.number_input("Regularization (C)", value=1.0)
-k_folds = st.sidebar.slider("CV Folds", 2, 10, 5)
+with st.sidebar.expander("Advanced engine settings"):
+    res_c = st.slider("Reservoir connectivity", 0.1, 1.0, 0.4, 0.05)
+    res_l = st.slider("Reservoir distance scale", 0.01, 1.0, 0.169, 0.001)
+    stdp_pos = st.number_input("STDP positive update", value=0.001, format="%.4f")
+    stdp_neg = st.number_input("STDP negative update", value=-0.01, format="%.4f")
+    mem_thr_val = st.number_input("Neuron firing threshold", value=0.01, format="%.3f")
 
 encoding_signature = {"delta_threshold": threshold_val}
 simulation_signature = {
@@ -462,8 +494,8 @@ if st.session_state.get("workflow_notice"):
 # --- SIDEBAR FOOTER ---
 st.sidebar.markdown("---")
 st.sidebar.info(
-    "**SNN-QC Workbench**\n\n"
-    "Reusable spiking-feature classification for labelled time-series datasets.\n\n"
+    f"**{APP_NAME}**\n\n"
+    f"{APP_TAGLINE}\n\n"
     "Original toolbox: **Dr. Ravi Kumar Jha**, Ulster University."
 )
 
@@ -485,12 +517,12 @@ def encode_dataset(X_raw, thresh):
 # ==========================================
 
 st.markdown("""
-    <h2 style='font-size: 24px;'> Data Setup </h2>
+    <h2 style='font-size: 24px;'> Connect Your Data </h2>
 """, unsafe_allow_html=True)
 
 dataset_source = st.radio(
-    "Dataset Source",
-    ["Built-in EEG demo", "Single combined CSV", "Multiple sample CSVs"],
+    "Choose a data source",
+    ["Example dataset", "Single uploaded table", "Multiple sample files"],
     horizontal=True,
 )
 
@@ -502,10 +534,10 @@ sample_files = []
 sample_labels_df = None
 sample_has_header = True
 
-if dataset_source == "Built-in EEG demo":
-    st.caption("Uses the bundled wrist movement EEG dataset: 60 trials, 128 timepoints, 14 channels.")
+if dataset_source == "Example dataset":
+    st.caption("Try the included EEG example: 60 trials, 128 timepoints, 14 channels.")
 
-elif dataset_source == "Single combined CSV":
+elif dataset_source == "Single uploaded table":
     st.caption("Expected format: one row per sample-timepoint, with columns for sample ID, label, and numeric features.")
     combined_file = st.file_uploader("Upload combined CSV", type=["csv"], key="combined_csv")
     combined_has_header = st.checkbox("Combined CSV has a header row", value=True)
@@ -547,7 +579,7 @@ elif dataset_source == "Single combined CSV":
         else:
             render_dataset_preview(preview_X, preview_y, preview_features)
 
-elif dataset_source == "Multiple sample CSVs":
+elif dataset_source == "Multiple sample files":
     st.caption("Expected format: each sample CSV is timepoints x features. Labels CSV must contain one label per sample file, in sorted filename order.")
     sample_has_header = st.checkbox("Sample CSVs have a header row", value=True)
     sample_files = st.file_uploader("Upload sample CSV files", type=["csv"], accept_multiple_files=True, key="sample_csvs")
@@ -570,12 +602,12 @@ elif dataset_source == "Multiple sample CSVs":
         else:
             render_dataset_preview(preview_X, preview_y, preview_features)
 
-if st.button("Load & Encode Data"):
-    with st.spinner(f"Loading files and applying Delta Encoding (Thresh={threshold_val})..."):
-        if dataset_source == "Built-in EEG demo":
+if st.button("Prepare Dataset"):
+    with st.spinner(f"Preparing signals with spike sensitivity {threshold_val}..."):
+        if dataset_source == "Example dataset":
             X_raw, y_data, feature_names, err = load_builtin_eeg_dataset()
-            dataset_name = "Built-in EEG demo"
-        elif dataset_source == "Single combined CSV":
+            dataset_name = "Example EEG dataset"
+        elif dataset_source == "Single uploaded table":
             X_raw, y_data, feature_names, err = parse_combined_csv(
                 combined_df,
                 combined_config.get("sample_col"),
@@ -583,10 +615,10 @@ if st.button("Load & Encode Data"):
                 combined_config.get("time_col"),
                 combined_config.get("feature_cols", []),
             )
-            dataset_name = "Uploaded combined CSV"
+            dataset_name = "Uploaded table"
         else:
             X_raw, y_data, feature_names, err = parse_sample_csvs(sample_files, sample_labels_df, sample_has_header)
-            dataset_name = "Uploaded sample CSVs"
+            dataset_name = "Uploaded sample files"
         
         if err:
             st.error(err)
@@ -612,10 +644,10 @@ if st.session_state.get('data_ready', False):
     y = st.session_state['y']
     feature_names = st.session_state.get('feature_names', [f"Feature {idx + 1}" for idx in range(X.shape[2])])
 
-    st.sidebar.header("3. Features Selection")
-    feat_name_1 = st.sidebar.selectbox("Feature 1 (Channel)", feature_names, index=0)
+    st.sidebar.header("Report Features")
+    feat_name_1 = st.sidebar.selectbox("Primary feature", feature_names, index=0)
     feat_2_default = min(4, len(feature_names) - 1)
-    feat_name_2 = st.sidebar.selectbox("Feature 2 (Channel)", feature_names, index=feat_2_default)
+    feat_name_2 = st.sidebar.selectbox("Comparison feature", feature_names, index=feat_2_default)
     feat_idx_1 = feature_names.index(feat_name_1)
     feat_idx_2 = feature_names.index(feat_name_2)
 
@@ -623,16 +655,16 @@ if st.session_state.get('data_ready', False):
         st.write(f"**Dataset:** {st.session_state.get('dataset_name', 'Loaded dataset')}")
         render_loaded_dataset_summary(X, y, feature_names)
     
-    with st.expander("Raw Signals & Spikes", expanded=True):
-        st.caption("Encode Spikes")
+    with st.expander("Signal Preview", expanded=True):
+        st.caption("Inspect raw signal values and the generated spike representation.")
         
         col_viz_1, col_viz_2 = st.columns(2)
         
         with col_viz_1:
-            sel_sample = st.slider("Select Trial", 0, len(X)-1, 0)
+            sel_sample = st.slider("Select sample", 0, len(X)-1, 0)
             
         with col_viz_2:
-            sel_channel = st.selectbox("Select Feature (Channel)", feature_names, index=0, key="viz_chan_sel")
+            sel_channel = st.selectbox("Select feature", feature_names, index=0, key="viz_chan_sel")
         
         ch_idx_viz = feature_names.index(sel_channel)
         
@@ -644,15 +676,15 @@ if st.session_state.get('data_ready', False):
     st.divider()
     
     st.markdown("""
-        <h2 style='font-size: 24px;'> NeuCube Spatio-temporal Learning </h2>
+        <h2 style='font-size: 24px;'> Run Analysis </h2>
     """, unsafe_allow_html=True)
     
-    if st.button("NeuCube Initialisation & Mapping"):
+    if st.button("Prepare Analysis Engine"):
         st.session_state['simulation_signature'] = simulation_signature
         st.session_state['map_initialised'] = True
 
     if st.session_state.get('map_initialised', False):
-        with st.expander("Schematic Brain Template", expanded=True):
+        with st.expander("Feature Map", expanded=True):
             col_ctrl_1, col_ctrl_2 = st.columns([1, 4])
             with col_ctrl_1:
                 clean_view = st.toggle("Grid & Axes", value=True)
@@ -668,7 +700,7 @@ if st.session_state.get('data_ready', False):
         with col_sim_1:
             st.write("") 
             st.write("")
-            run_sim = st.button("▶ Run NeuCube Simulation")
+            run_sim = st.button("Run Feature Extraction")
 
         if run_sim:
             with col_sim_2:
@@ -685,9 +717,9 @@ if st.session_state.get('data_ready', False):
                         unsafe_allow_html=True,
                     )
                 except FileNotFoundError:
-                    brain_placeholder.info("🧠 NeuCube is thinking... (GIF not found)")
+                    brain_placeholder.info("Analysis running...")
 
-                with st.spinner("Spatio-temporal Training..."):
+                with st.spinner("Extracting spiking features..."):
                     res = Reservoir(inputs=X.shape[2], c=res_c, l=res_l)
                     learning_rule = STDP(a_pos=stdp_pos, a_neg=stdp_neg)
                     sam = SpikeCount()
@@ -710,15 +742,15 @@ if st.session_state.get('data_ready', False):
                 
                 brain_placeholder.empty()
             
-            st.success("Simulation Complete!")
+            st.success("Feature extraction complete.")
 
 
     if st.session_state.get('features_ready', False):
         st.divider()
         st.markdown("""
-                <h2 style='font-size: 24px;'> Spiking Feature Extraction </h2>
+                <h2 style='font-size: 24px;'> Feature Table </h2>
         """, unsafe_allow_html=True)
-        st.caption("Trained spike frequency state vectors.")
+        st.caption("Model-ready features extracted from the prepared time-series signals.")
         
         st.write(f"**Extracted Features Shape:** {st.session_state['snn_features'].shape}")
 
@@ -726,7 +758,7 @@ if st.session_state.get('data_ready', False):
         features_df.insert(0, "label", y)
         features_df.insert(0, "sample_index", np.arange(len(features_df)))
         st.download_button(
-            "Download SNN Features",
+            "Download Feature Table",
             dataframe_to_csv_bytes(features_df),
             file_name="snn_features.csv",
             mime="text/csv",
@@ -737,30 +769,30 @@ if st.session_state.get('data_ready', False):
         
         st.divider()
         st.markdown("""
-                <h2 style='font-size: 24px;'> Classification </h2>
+                <h2 style='font-size: 24px;'> Model Report </h2>
         """, unsafe_allow_html=True)
         
         available_classes = sorted(pd.Series(y).dropna().unique(), key=str)
         classifier_name = st.selectbox(
-            "Classifier",
-            ["Quantum Kernel SVM", "Classical SVM", "Logistic Regression"],
+            "Model",
+            ["Quantum Kernel SVM (advanced)", "Classical SVM", "Logistic Regression"],
         )
 
         if len(available_classes) < 2:
             st.warning("At least two classes are required for classification.")
             st.stop()
 
-        default_class_selection = available_classes[:2] if classifier_name == "Quantum Kernel SVM" else available_classes
+        default_class_selection = available_classes[:2] if classifier_name == "Quantum Kernel SVM (advanced)" else available_classes
         selected_classes = st.multiselect(
             "Classes for classification",
             available_classes,
             default=default_class_selection,
         )
 
-        if classifier_name == "Quantum Kernel SVM" and len(selected_classes) != 2:
+        if classifier_name == "Quantum Kernel SVM (advanced)" and len(selected_classes) != 2:
             st.warning("Choose exactly two classes to run the current 2-feature quantum kernel classifier.")
             st.stop()
-        if classifier_name != "Quantum Kernel SVM" and len(selected_classes) < 2:
+        if classifier_name != "Quantum Kernel SVM (advanced)" and len(selected_classes) < 2:
             st.warning("Choose at least two classes.")
             st.stop()
 
@@ -768,7 +800,7 @@ if st.session_state.get('data_ready', False):
         filtered_features = snn_features[class_mask]
         y_final = y[class_mask]
 
-        if classifier_name == "Quantum Kernel SVM":
+        if classifier_name == "Quantum Kernel SVM (advanced)":
             feature_indices = [int(feat_idx_1), int(feat_idx_2)]
             selected_feature_names = [feat_name_1, feat_name_2]
         else:
@@ -790,15 +822,15 @@ if st.session_state.get('data_ready', False):
         
         col2.write(f"**Selected Features:** {', '.join(map(str, selected_feature_names))}")
 
-        if classifier_name == "Quantum Kernel SVM":
-            with st.expander("View Quantum Kernel Circuit"):
+        if classifier_name == "Quantum Kernel SVM (advanced)":
+            with st.expander("View Quantum Circuit"):
                 try:
                     fig, ax = qml.draw_mpl(kernel)(X_final[0], X_final[1])
                     st.pyplot(fig)
                 except Exception as e:
                     st.warning(f"Circuit visualization error: {e}")
 
-        if st.button("Run Cross-Validation"):
+        if st.button("Generate Report"):
             class_counts = pd.Series(y_final).value_counts()
             effective_folds = min(k_folds, int(class_counts.min()))
             if effective_folds < 2:
@@ -808,7 +840,7 @@ if st.session_state.get('data_ready', False):
             kf = StratifiedKFold(n_splits=effective_folds, shuffle=True, random_state=int(SEED))
             y_total2, pred_total2 = [], []
 
-            if classifier_name == "Quantum Kernel SVM":
+            if classifier_name == "Quantum Kernel SVM (advanced)":
                 classifier = SVC(kernel=kernel_matrix, C=svm_c)
             elif classifier_name == "Classical SVM":
                 classifier = SVC(kernel="rbf", C=svm_c)

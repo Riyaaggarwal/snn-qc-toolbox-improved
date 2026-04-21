@@ -1,30 +1,21 @@
-# SNN-QC-Toolbox
-SNN-QC: Spiking Neural Network-Quantum Computational Toolbox
+# SpikeSense Studio
+Time-series classification with spiking features and explainable model reports.
 
-This repository extends the original SNN-QC toolbox into a more general-purpose Streamlit workbench.
+SpikeSense Studio extends the original SNN-QC toolbox into a more general-purpose Streamlit product experience.
 Original toolbox and research prototype developed by **Dr. Ravi Kumar Jha**, Intelligent Systems Research
 Centre, Ulster University. Original app contact: **Jha-R@ulster.ac.uk**.
 
 <img width="1992" height="444" alt="image" src="https://github.com/user-attachments/assets/69f622ac-90b4-45a4-858e-72b0069de240" />
 
 
-# Outline
-
 ## Key Features
 
-- Implementation of Neucube in Python
-- Written with PyTorch for faster computations
-- Ability to capture and process patterns in spatio-temporal data
-- Spatio-temporal trained spiking feature extraction
-- Integration of NeuCube with advanced Quantum Kernel
-- Generic Streamlit workbench for built-in or uploaded time-series datasets
-- Classical and quantum classifier options for extracted SNN features
-
-## Demostrations
-
-- neucube_demo.py: existing NeuCube architecture
-- neucube_improved_demo.py: an improved feature selection approach with the existing NeuCube architecture
-- snn-qc_demo.py: an integrated advanced snn-quantum architecture 
+- Upload labelled time-series data or use the included EEG example.
+- Preview data shape and class balance before analysis.
+- Generate spiking feature tables for downstream modelling.
+- Compare classical SVM, logistic regression, and an advanced quantum-kernel SVM mode.
+- Export feature tables, classification metrics, and experiment configuration.
+- Preserve credit and references for the original SNN-QC research toolbox.
 
 ## Installation
 
@@ -46,17 +37,17 @@ streamlit run app.py
 
 ## Usage
 
-The app now supports three dataset sources:
+The app supports three dataset sources:
 
-- **Built-in EEG demo**: uses the bundled wrist-movement EEG sample data.
-- **Single combined CSV**: use one row per sample-timepoint. Select the sample ID column, label column, optional time/order column, and numeric feature columns in the UI.
-- **Multiple sample CSVs**: upload one CSV per sample, where every file has the same `timepoints x features` shape, plus a labels CSV with one label per sample file in sorted filename order.
+- **Example dataset**: uses the bundled wrist-movement EEG sample data.
+- **Single uploaded table**: use one row per sample-timepoint. Select the sample ID column, label column, optional time/order column, and numeric feature columns in the UI.
+- **Multiple sample files**: upload one CSV per sample, where every file has the same `timepoints x features` shape, plus a labels CSV with one label per sample file in sorted filename order.
 
-After loading a dataset, the app applies Delta spike encoding, runs NeuCube spatio-temporal learning, extracts SNN features, and supports:
+After loading a dataset, the app prepares the signals, runs the analysis engine, extracts spiking features, and supports:
 
-- Quantum Kernel SVM for two selected classes and two selected features
 - Classical SVM for binary or multiclass classification
 - Logistic Regression for binary or multiclass classification
+- Quantum Kernel SVM for two selected classes and two selected features
 
 The core functionality of NeuCube-Py revolves around the `reservoir` class, which represents the spiking neural network model. Here is a basic example of how to use NeuCube-Py:
 
