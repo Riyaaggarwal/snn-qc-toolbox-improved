@@ -13,6 +13,8 @@ SNN-QC: Spiking Neural Network-Quantum Computational Toolbox
 - Ability to capture and process patterns in spatio-temporal data
 - Spatio-temporal trained spiking feature extraction
 - Integration of NeuCube with advanced Quantum Kernel
+- Generic Streamlit workbench for built-in or uploaded time-series datasets
+- Classical and quantum classifier options for extracted SNN features
 
 ## Demostrations
 
@@ -22,16 +24,35 @@ SNN-QC: Spiking Neural Network-Quantum Computational Toolbox
 
 ## Installation
 
-To use NeuCube-Py, you can clone this repository:
+Clone this repository and install the Python dependencies:
 
 ```bash
-git clone https://github.com/KEDRI-AUT/NeuCube-Py.git
+git clone git@github.com:Riyaaggarwal/snn-qc-toolbox-improved.git
+cd snn-qc-toolbox-improved
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
 ```
-or pip install
+
+Run the Streamlit app:
+
 ```bash
-pip install git+https://github.com/KEDRI-AUT/NeuCube-Py.git
+streamlit run app.py
 ```
+
 ## Usage
+
+The app now supports three dataset sources:
+
+- **Built-in EEG demo**: uses the bundled wrist-movement EEG sample data.
+- **Single combined CSV**: use one row per sample-timepoint. Select the sample ID column, label column, optional time/order column, and numeric feature columns in the UI.
+- **Multiple sample CSVs**: upload one CSV per sample, where every file has the same `timepoints x features` shape, plus a labels CSV with one label per sample file in sorted filename order.
+
+After loading a dataset, the app applies Delta spike encoding, runs NeuCube spatio-temporal learning, extracts SNN features, and supports:
+
+- Quantum Kernel SVM for two selected classes and two selected features
+- Classical SVM for binary or multiclass classification
+- Logistic Regression for binary or multiclass classification
 
 The core functionality of NeuCube-Py revolves around the `reservoir` class, which represents the spiking neural network model. Here is a basic example of how to use NeuCube-Py:
 
