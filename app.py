@@ -790,7 +790,7 @@ def render_help_page():
 # SIDEBAR
 # ══════════════════════════════════════════════════════════════════════════════
 
-page = st.sidebar.radio("", ["Studio", "Documentation"], label_visibility="collapsed")
+page = st.sidebar.radio("Navigation", ["Studio", "Documentation"], label_visibility="collapsed")
 if page == "Documentation":
     render_help_page()
     st.stop()
@@ -1578,8 +1578,8 @@ if st.session_state.get("data_ready"):
 
         # ── Model Comparison ──────────────────────────────────────────────────
         st.markdown("---")
-        _btn_c1, _btn_c2 = st.columns([1, 1])
         _auto_report = st.session_state.pop("auto_run_report", False)
+        _, _btn_c2 = st.columns([1, 1])
         _run_compare = _btn_c2.button("Compare All Models")
 
         if _run_compare and not is_quantum:
