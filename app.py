@@ -462,6 +462,105 @@ def feature_spike_density_figure(X_encoded, feature_names):
     return fig
 
 
+# ── Report helpers ───────────────────────────────────────────────────────────
+
+def _fig_to_b64(fig) -> str:
+    import io
+    buf = io.BytesIO()
+    fig.savefig(buf, format="png", bbox_inches="tight", dpi=150, facecolor=fig.get_facecolor())
+    buf.seek(0)
+    return base64.b64encode(buf.read()).decode("utf-8")
+
+
+def build_html_report(
+    dataset_name, classifier_name, final_acc, final_f1,
+    interp, report_df, config, cm_b64,
+    imp_b64=None,
+):
+    ts = datetime.datetime.now().strftime("%Y-%m-%d %H:%M")
+
+    tbl_rows = "".join(
+        f"<tr><td>{idx}</td>"
+        f"<td>{row.get('precision', 0):.3f}</td>"
+        f"<td>{row.get('recall', 0):.3f}</td>"
+        f"<td>{row.get('f1-score', 0):.3f}</td>"
+        f"<td>{int(row.get('support', 0))}</td></tr>"
+        for idx, row in report_df.iterrows()
+    )
+    cfg_rows = "".join(
+        f"<tr><td>{k}</td><td>{v}</td></tr>"
+        for k, v in config.get("hyperparameters", {}).items()
+    )
+    imp_html = (
+        f'<h2>Feature Importance</h2>'
+        f'<img src="data:image/png;base64,{imp_b64}" style="max-width:100%">'
+        if imp_b64 else ""
+    )
+
+    return f"""<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>SpikeSense Studio — {dataset_name}</title>
+<style>
+  body{{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;
+       max-width:900px;margin:0 auto;padding:2rem;color:#1E293B;background:#F8FAFC}}
+  h1{{color:#4F46E5;margin-bottom:.2rem}}
+  h2{{color:#334155;border-bottom:1px solid #E2E8F0;padding-bottom:.4rem;margin-top:2rem}}
+  .meta{{color:#64748B;font-size:.9rem;margin-bottom:2rem}}
+  .row{{display:flex;gap:1rem;margin:1rem 0;flex-wrap:wrap}}
+  .card{{background:#fff;border:1px solid #E2E8F0;border-radius:10px;
+         padding:1rem 1.5rem;min-width:130px;box-shadow:0 1px 3px rgba(0,0,0,.05)}}
+  .lbl{{font-size:.72rem;text-transform:uppercase;color:#64748B;letter-spacing:.05em}}
+  .val{{font-size:1.75rem;font-weight:700;color:#4F46E5}}
+  table{{border-collapse:collapse;width:100%;margin:1rem 0}}
+  th{{background:#F1F5F9;padding:.6rem 1rem;text-align:left;
+      font-size:.78rem;text-transform:uppercase;color:#475569}}
+  td{{padding:.5rem 1rem;border-bottom:1px solid #F1F5F9;font-size:.88rem}}
+  tr:hover td{{background:#F8FAFC}}
+  img{{border-radius:8px;border:1px solid #E2E8F0;max-width:100%}}
+  .badge{{background:#EEF2FF;color:#4F46E5;border-radius:6px;
+          padding:2px 10px;font-size:.8rem;font-weight:600}}
+  .box{{background:#fff;border-left:4px solid #4F46E5;
+        padding:1rem 1.5rem;border-radius:0 8px 8px 0;margin:1rem 0}}
+  .foot{{margin-top:3rem;color:#94A3B8;font-size:.8rem}}
+</style>
+</head>
+<body>
+<h1>⚡ SpikeSense Studio</h1>
+<div class="meta">
+  Generated {ts} &nbsp;·&nbsp; Dataset: <strong>{dataset_name}</strong>
+  &nbsp;·&nbsp; Classifier: <span class="badge">{classifier_name}</span>
+</div>
+
+<h2>Results</h2>
+<div class="row">
+  <div class="card"><div class="lbl">Accuracy</div><div class="val">{final_acc:.1%}</div></div>
+  <div class="card"><div class="lbl">Weighted F1</div><div class="val">{final_f1:.1%}</div></div>
+  <div class="card"><div class="lbl">Baseline</div><div class="val">{interp['baseline']:.1%}</div></div>
+  <div class="card"><div class="lbl">Accuracy Lift</div><div class="val">{interp['lift']:+.1%}</div></div>
+</div>
+<div class="box"><p>{interp['strength']}</p><p>{interp['confusion_note']}</p></div>
+
+<h2>Per-Class Metrics</h2>
+<table>
+  <tr><th>Class</th><th>Precision</th><th>Recall</th><th>F1-score</th><th>Support</th></tr>
+  {tbl_rows}
+</table>
+
+<h2>Confusion Matrix</h2>
+<img src="data:image/png;base64,{cm_b64}" style="max-width:460px">
+
+{imp_html}
+
+<h2>Pipeline Configuration</h2>
+<table><tr><th>Parameter</th><th>Value</th></tr>{cfg_rows}</table>
+
+<p class="foot">SpikeSense Studio &nbsp;·&nbsp;
+Original research: Dr. Ravi Kumar Jha, Ulster University</p>
+</body></html>"""
+
+
 # ── Data render helpers ───────────────────────────────────────────────────────
 
 def render_csv_templates():
@@ -1627,6 +1726,7 @@ if st.session_state.get("data_ready"):
                 for spine in ax_cm.spines.values():
                     spine.set_edgecolor((148/255, 163/255, 184/255, 0.15))
                 st.pyplot(fig_cm)
+                _cm_b64 = _fig_to_b64(fig_cm)
                 plt.close(fig_cm)
 
             # ── Feature importance (Random Forest only) ───────────────────
@@ -1652,21 +1752,42 @@ if st.session_state.get("data_ready"):
                     spine.set_edgecolor((148/255, 163/255, 184/255, 0.15))
                 plt.tight_layout()
                 st.pyplot(_fig_imp)
+                _imp_b64 = _fig_to_b64(_fig_imp)
                 plt.close(_fig_imp)
+            else:
+                _imp_b64 = None
 
             # ── Downloads ────────────────────────────────────────────────────
             st.markdown("##### Export")
-            dl1, dl2 = st.columns(2)
-            dl1.download_button(
-                "Download metrics (CSV)",
-                dataframe_to_csv_bytes(report_df.reset_index().rename(columns={"index": "class"})),
-                file_name="classification_metrics.csv", mime="text/csv",
-            )
             exp_config = build_experiment_config(
                 threshold_val, res_c, res_l, stdp_pos, stdp_neg, mem_thr_val, svm_c, k_folds, seed_val
             )
             exp_config["results"] = {"accuracy": round(final_acc, 4), "weighted_f1": round(final_f1, 4)}
+
+            _html_report = build_html_report(
+                dataset_name   = st.session_state.get("dataset_name", "—"),
+                classifier_name= classifier_name,
+                final_acc      = final_acc,
+                final_f1       = final_f1,
+                interp         = interp,
+                report_df      = report_df,
+                config         = exp_config,
+                cm_b64         = _cm_b64,
+                imp_b64        = _imp_b64,
+            )
+
+            dl1, dl2, dl3 = st.columns(3)
+            dl1.download_button(
+                "Download report (HTML)",
+                _html_report.encode("utf-8"),
+                file_name="spikesense_report.html", mime="text/html",
+            )
             dl2.download_button(
+                "Download metrics (CSV)",
+                dataframe_to_csv_bytes(report_df.reset_index().rename(columns={"index": "class"})),
+                file_name="classification_metrics.csv", mime="text/csv",
+            )
+            dl3.download_button(
                 "Download experiment config (JSON)",
                 json.dumps(exp_config, indent=2).encode("utf-8"),
                 file_name="snnqc_experiment_config.json", mime="application/json",
