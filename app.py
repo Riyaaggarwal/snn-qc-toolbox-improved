@@ -18,8 +18,9 @@ from snnqc.data_loader import (
 )
 
 # --- SKLEARN IMPORTS ---
-from sklearn.metrics import accuracy_score as accuracy, confusion_matrix, ConfusionMatrixDisplay
-from sklearn.model_selection import KFold
+from sklearn.metrics import accuracy_score as accuracy, confusion_matrix, ConfusionMatrixDisplay, f1_score
+from sklearn.model_selection import StratifiedKFold
+from sklearn.linear_model import LogisticRegression
 from sklearn.preprocessing import StandardScaler
 from sklearn.svm import SVC
 
@@ -543,58 +544,95 @@ if st.session_state.get('data_ready', False):
         snn_features = st.session_state['snn_features']
         
         st.divider()
-        #st.header("Quantum Kernel Classification")
+        #st.header("Classification")
         st.markdown("""
-                <h2 style='font-size: 24px;'> Quantum Kernel Classification </h2>
+                <h2 style='font-size: 24px;'> Classification </h2>
         """, unsafe_allow_html=True)
         
         # 1. Prepare Data
         available_classes = sorted(pd.Series(y).dropna().unique(), key=str)
-        default_class_selection = available_classes[:2]
+        classifier_name = st.selectbox(
+            "Classifier",
+            ["Quantum Kernel SVM", "Classical SVM", "Logistic Regression"],
+        )
+
+        if len(available_classes) < 2:
+            st.warning("At least two classes are required for classification.")
+            st.stop()
+
+        default_class_selection = available_classes[:2] if classifier_name == "Quantum Kernel SVM" else available_classes
         selected_classes = st.multiselect(
-            "Classes for binary quantum classification",
+            "Classes for classification",
             available_classes,
             default=default_class_selection,
         )
 
-        if len(selected_classes) != 2:
+        if classifier_name == "Quantum Kernel SVM" and len(selected_classes) != 2:
             st.warning("Choose exactly two classes to run the current 2-feature quantum kernel classifier.")
+            st.stop()
+        if classifier_name != "Quantum Kernel SVM" and len(selected_classes) < 2:
+            st.warning("Choose at least two classes.")
             st.stop()
 
         class_mask = np.isin(y, selected_classes)
-        binary_class = snn_features[class_mask]
+        filtered_features = snn_features[class_mask]
         y_final = y[class_mask]
-        
-        # Select Features based on Indices derived from Names
-        feature_indices = [int(feat_idx_1), int(feat_idx_2)]
-        X_final = binary_class[:, feature_indices]
+
+        if classifier_name == "Quantum Kernel SVM":
+            feature_indices = [int(feat_idx_1), int(feat_idx_2)]
+            selected_feature_names = [feat_name_1, feat_name_2]
+        else:
+            default_feature_names = feature_names if len(feature_names) <= 20 else feature_names[:20]
+            selected_feature_names = st.multiselect(
+                "Features for classification",
+                feature_names,
+                default=default_feature_names,
+            )
+            if not selected_feature_names:
+                st.warning("Choose at least one feature.")
+                st.stop()
+            feature_indices = [feature_names.index(name) for name in selected_feature_names]
+
+        X_final = filtered_features[:, feature_indices]
         
         col1, col2 = st.columns(2)
-        col1.write(f"**Quantum Kernel Input Shape:** {X_final.shape}")
+        col1.write(f"**Classifier Input Shape:** {X_final.shape}")
         
         # Show Names in UI
-        col2.write(f"**Selected Features:** {feat_name_1}, {feat_name_2} ")
+        col2.write(f"**Selected Features:** {', '.join(map(str, selected_feature_names))}")
 
         # 2. Visualise Quantum Circuit
-        with st.expander("View Quantum Kernel Circuit"):
-            try:
-                fig, ax = qml.draw_mpl(kernel)(X_final[0], X_final[1])
-                st.pyplot(fig)
-            except Exception as e:
-                st.warning(f"Circuit visualization error: {e}")
+        if classifier_name == "Quantum Kernel SVM":
+            with st.expander("View Quantum Kernel Circuit"):
+                try:
+                    fig, ax = qml.draw_mpl(kernel)(X_final[0], X_final[1])
+                    st.pyplot(fig)
+                except Exception as e:
+                    st.warning(f"Circuit visualization error: {e}")
 
-        # 3. Quantum Kernel Classification
+        # 3. Classification
         if st.button("Run Cross-Validation"):
-            kf = KFold(n_splits=k_folds, shuffle=True, random_state=int(SEED))
+            class_counts = pd.Series(y_final).value_counts()
+            effective_folds = min(k_folds, int(class_counts.min()))
+            if effective_folds < 2:
+                st.warning("Each selected class needs at least two samples for cross-validation.")
+                st.stop()
+
+            kf = StratifiedKFold(n_splits=effective_folds, shuffle=True, random_state=int(SEED))
             y_total2, pred_total2 = [], []
 
-            svm = SVC(kernel=kernel_matrix, C=svm_c)
+            if classifier_name == "Quantum Kernel SVM":
+                classifier = SVC(kernel=kernel_matrix, C=svm_c)
+            elif classifier_name == "Classical SVM":
+                classifier = SVC(kernel="rbf", C=svm_c)
+            else:
+                classifier = LogisticRegression(max_iter=1000)
 
             progress_bar = st.progress(0)
             status_txt = st.empty()
 
-            for i, (train_index, test_index) in enumerate(kf.split(X_final)):
-                status_txt.text(f"Running Fold {i+1}/{k_folds}...")
+            for i, (train_index, test_index) in enumerate(kf.split(X_final, y_final)):
+                status_txt.text(f"Running Fold {i+1}/{effective_folds}...")
                 
                 X_train, X_test = X_final[train_index], X_final[test_index]
                 y_train, y_test = y_final[train_index], y_final[test_index]
@@ -603,25 +641,28 @@ if st.session_state.get('data_ready', False):
                 X_train = scaler.fit_transform(X_train)
                 X_test = scaler.transform(X_test)
 
-                svm.fit(X_train, y_train)
-                pred2 = svm.predict(X_test)
+                classifier.fit(X_train, y_train)
+                pred2 = classifier.predict(X_test)
 
                 y_total2.extend(y_test)
                 pred_total2.extend(pred2)
                 
-                progress_bar.progress((i + 1) / k_folds)
+                progress_bar.progress((i + 1) / effective_folds)
 
             status_txt.text("Validation Complete.")
             
             # --- FINAL METRICS ---
             final_acc = accuracy(y_total2, pred_total2)
-            st.success(f"Final Accuracy: {final_acc:.2%}")
+            final_f1 = f1_score(y_total2, pred_total2, average="weighted", zero_division=0)
+            metric_col_1, metric_col_2 = st.columns(2)
+            metric_col_1.metric("Accuracy", f"{final_acc:.2%}")
+            metric_col_2.metric("Weighted F1", f"{final_f1:.2%}")
             
             # --- CONFUSION MATRIX ---
             st.markdown("##### Confusion Matrix")   # smaller than subheader
             
             cm = confusion_matrix(y_total2, pred_total2)
-            unique_labels = sorted(list(set(y_total2)))
+            unique_labels = sorted(list(set(y_total2)), key=str)
             
             col_cm_1, col_cm_2 = st.columns([1, 2])
             
