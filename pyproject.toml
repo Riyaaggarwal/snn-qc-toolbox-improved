@@ -35,9 +35,7 @@ dependencies = [
     "pyyaml>=6.0",
 ]
 
-[project.scripts]
-spikesense = "streamlit run app:main"
-
 [tool.setuptools.packages.find]
 where = ["."]
-exclude = ["snnqc*", "neucube*", "tests*"]
+include = ["snnqc*", "neucube*"]
+exclude = ["tests*"]
