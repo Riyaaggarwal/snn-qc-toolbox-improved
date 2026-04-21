@@ -35,6 +35,9 @@ from sklearn.metrics import (
     f1_score,
 )
 from sklearn.model_selection import StratifiedKFold
+from sklearn.decomposition import PCA
+from sklearn.manifold import TSNE
+from sklearn.model_selection import GridSearchCV
 from sklearn.preprocessing import StandardScaler
 from sklearn.svm import SVC
 
@@ -1211,6 +1214,144 @@ if st.session_state.get("data_ready"):
             file_name="snn_features.csv", mime="text/csv",
         )
 
+        # ── Feature Space Visualisation ───────────────────────────────────────
+        st.divider()
+        section_header("✦", "Feature Space",
+                        "2D projection of SNN features — well-separated clusters mean better classification signal.")
+
+        _proj_c1, _proj_c2 = st.columns([1, 4])
+        _proj_method = _proj_c1.radio(
+            "Projection", ["PCA", "t-SNE"], horizontal=False,
+            help="PCA is instant. t-SNE reveals non-linear structure but takes ~10–20s.",
+        )
+
+        _snn_scaled = StandardScaler().fit_transform(snn_features)
+
+        with st.spinner(f"Computing {_proj_method} projection…"):
+            if _proj_method == "PCA":
+                _pca = PCA(n_components=2, random_state=seed_val)
+                _coords = _pca.fit_transform(_snn_scaled)
+                _proj_caption = (
+                    f"Explained variance — PC1: {_pca.explained_variance_ratio_[0]:.1%}, "
+                    f"PC2: {_pca.explained_variance_ratio_[1]:.1%}"
+                )
+            else:
+                _n_perp = min(30, max(5, _snn_scaled.shape[0] // 4))
+                _pre = _snn_scaled
+                if _snn_scaled.shape[1] > 50:
+                    _pre = PCA(n_components=50, random_state=seed_val).fit_transform(_snn_scaled)
+                _coords = TSNE(
+                    n_components=2, random_state=seed_val,
+                    perplexity=_n_perp, n_iter=500, init="pca",
+                ).fit_transform(_pre)
+                _proj_caption = f"t-SNE  ·  perplexity={_n_perp}"
+
+        _cls_unique = sorted(set(y.tolist() if hasattr(y, "tolist") else list(y)), key=str)
+        _pal = plt.cm.tab10(np.linspace(0, 0.9, len(_cls_unique)))
+
+        _fig_proj, _ax_proj = plt.subplots(figsize=(7, 5), facecolor="#0C0C18")
+        _ax_proj.set_facecolor("#0C0C18")
+        for _cls, _col in zip(_cls_unique, _pal):
+            _m = np.array(y) == _cls
+            _ax_proj.scatter(_coords[_m, 0], _coords[_m, 1],
+                             c=[_col], label=str(_cls), alpha=0.78, s=38, edgecolors="none")
+        _ax_proj.set_xlabel(f"{_proj_method} 1", fontsize=9, color="#94A3B8")
+        _ax_proj.set_ylabel(f"{_proj_method} 2", fontsize=9, color="#94A3B8")
+        _ax_proj.tick_params(colors="#94A3B8", labelsize=8)
+        _ax_proj.legend(fontsize=9, labelcolor="#CBD5E1", facecolor="#0C0C18",
+                        edgecolor=(99/255, 102/255, 241/255, 0.3))
+        for _sp in _ax_proj.spines.values():
+            _sp.set_edgecolor((148/255, 163/255, 184/255, 0.15))
+        with _proj_c2:
+            st.pyplot(_fig_proj)
+        plt.close(_fig_proj)
+        st.caption(_proj_caption)
+
+        # ── Encoding Sweep ────────────────────────────────────────────────────
+        st.divider()
+        section_header("✦", "Encoding Sweep",
+                        "How accuracy and spike density change across threshold values — quick proxy using direct spike counts, no re-simulation needed.")
+
+        with st.expander("Configure & Run Encoding Sweep"):
+            st.caption(
+                "Re-encodes your data at each threshold and measures CV accuracy using Logistic Regression "
+                "directly on the spike counts per feature (no reservoir re-simulation). "
+                "Use this to find a good threshold range before committing to a full pipeline run."
+            )
+            _sw_c1, _sw_c2, _sw_c3 = st.columns(3)
+            _sw_lo  = _sw_c1.number_input("Min threshold", 0.05, 2.0,  0.1,  0.05)
+            _sw_hi  = _sw_c2.number_input("Max threshold", 0.1,  3.0,  1.5,  0.1)
+            _sw_n   = _sw_c3.slider("Steps", 4, 12, 6)
+
+            if st.button("Run Encoding Sweep"):
+                _sw_thresholds = np.linspace(float(_sw_lo), float(_sw_hi), int(_sw_n))
+                _sw_rows = []
+                _sw_prog = st.progress(0)
+                _sw_min_cls = int(pd.Series(y).value_counts().min())
+                _sw_folds = min(3, _sw_min_cls)
+
+                if _sw_folds < 2:
+                    st.warning("Need at least 2 samples per class for the sweep.")
+                else:
+                    for _i, _thr in enumerate(_sw_thresholds):
+                        _X_re = encode_dataset(X_raw, float(_thr), normalize_signals)
+                        _X_counts = _X_re.numpy().sum(axis=1)  # (samples, features)
+
+                        _kf_sw = StratifiedKFold(n_splits=_sw_folds, shuffle=True, random_state=seed_val)
+                        _accs = []
+                        for _tr, _te in _kf_sw.split(_X_counts, y):
+                            _sc = StandardScaler()
+                            _Xtr = _sc.fit_transform(_X_counts[_tr])
+                            _Xte = _sc.transform(_X_counts[_te])
+                            _lr  = LogisticRegression(max_iter=500, random_state=seed_val, C=svm_c)
+                            _lr.fit(_Xtr, y[_tr])
+                            _accs.append(accuracy(_lr.predict(_Xte), y[_te]))
+
+                        _sw_rows.append({
+                            "threshold":     round(float(_thr), 3),
+                            "spike_density": round(float(_X_re.numpy().mean()), 4),
+                            "proxy_accuracy": round(float(np.mean(_accs)), 4),
+                        })
+                        _sw_prog.progress((_i + 1) / len(_sw_thresholds))
+
+                    _sw_prog.empty()
+                    _sw_df = pd.DataFrame(_sw_rows)
+
+                    _fig_sw, (_ax_sw1, _ax_sw2) = plt.subplots(
+                        1, 2, figsize=(10, 3.5), facecolor="#0C0C18"
+                    )
+                    for _ax in (_ax_sw1, _ax_sw2):
+                        _ax.set_facecolor("#0C0C18")
+                        _ax.tick_params(colors="#94A3B8", labelsize=8)
+                        _ax.grid(alpha=0.2, linestyle="--")
+                        for _sp in _ax.spines.values():
+                            _sp.set_edgecolor((148/255, 163/255, 184/255, 0.15))
+
+                    _ax_sw1.plot(_sw_df["threshold"], _sw_df["proxy_accuracy"],
+                                 color="#818CF8", marker="o", linewidth=2)
+                    _ax_sw1.set_xlabel("Spike Threshold", fontsize=9, color="#94A3B8")
+                    _ax_sw1.set_ylabel("Proxy CV Accuracy", fontsize=9, color="#94A3B8")
+                    _ax_sw1.set_title("Accuracy vs Threshold", fontsize=10, color="#F1F5F9")
+                    _ax_sw1.yaxis.label.set_color("#94A3B8")
+
+                    _ax_sw2.plot(_sw_df["threshold"], _sw_df["spike_density"] * 100,
+                                 color="#F472B6", marker="s", linewidth=2)
+                    _ax_sw2.set_xlabel("Spike Threshold", fontsize=9, color="#94A3B8")
+                    _ax_sw2.set_ylabel("Spike Density %", fontsize=9, color="#94A3B8")
+                    _ax_sw2.set_title("Sparsity vs Threshold", fontsize=10, color="#F1F5F9")
+                    _ax_sw2.yaxis.label.set_color("#94A3B8")
+
+                    plt.tight_layout()
+                    st.pyplot(_fig_sw)
+                    plt.close(_fig_sw)
+                    st.dataframe(_sw_df, use_container_width=True)
+
+                    _best = _sw_df.loc[_sw_df["proxy_accuracy"].idxmax()]
+                    st.success(
+                        f"Best proxy accuracy **{_best['proxy_accuracy']:.2%}** at threshold "
+                        f"**{_best['threshold']}** — try setting Spike Sensitivity to this value and re-running."
+                    )
+
     # ── STEP 5: Model Report ──────────────────────────────────────────────────
     if st.session_state.get("features_ready"):
         snn_features = st.session_state["snn_features"]
@@ -1292,8 +1433,109 @@ if st.session_state.get("data_ready"):
                 except Exception as exc:
                     st.info(f"Circuit diagram unavailable: {exc}")
 
+        # ── HP Tuning ─────────────────────────────────────────────────────────
+        if not is_quantum:
+            with st.expander("Auto-tune Hyperparameters"):
+                st.caption(
+                    "Grid search over classifier parameters using the current SNN features. "
+                    "Fast — no reservoir re-simulation. Best params are shown so you can apply them manually."
+                )
+                _hp_grids = {
+                    "Classical SVM":      {"C": [0.01, 0.1, 1, 10, 100], "kernel": ["rbf", "linear"]},
+                    "Logistic Regression":{"C": [0.01, 0.1, 1, 10],      "max_iter": [500, 2000]},
+                    "Random Forest":      {"n_estimators": [50, 100, 200], "max_depth": [None, 5, 10]},
+                }
+                _hp_base = {
+                    "Classical SVM":       SVC(random_state=seed_val),
+                    "Logistic Regression": LogisticRegression(random_state=seed_val),
+                    "Random Forest":       RandomForestClassifier(random_state=seed_val),
+                }
+                st.caption(f"Search grid for **{classifier_name}**: `{_hp_grids.get(classifier_name, {})}`")
+
+                if st.button("Run HP Tuning"):
+                    _hp_folds = min(5, int(pd.Series(y_final).value_counts().min()))
+                    if _hp_folds < 2:
+                        st.warning("Need at least 2 samples per class.")
+                    else:
+                        with st.spinner("Running grid search…"):
+                            _sc_hp = StandardScaler()
+                            _X_hp  = _sc_hp.fit_transform(X_final)
+                            _gs = GridSearchCV(
+                                _hp_base[classifier_name],
+                                _hp_grids[classifier_name],
+                                cv=_hp_folds, scoring="accuracy", n_jobs=-1,
+                            )
+                            _gs.fit(_X_hp, y_final)
+
+                        st.success(f"Best CV accuracy: **{_gs.best_score_:.2%}**")
+                        st.json(_gs.best_params_)
+
+                        _gs_df = pd.DataFrame(_gs.cv_results_)[
+                            ["params", "mean_test_score", "std_test_score", "rank_test_score"]
+                        ].sort_values("rank_test_score")
+                        _gs_df["mean_test_score"] = _gs_df["mean_test_score"].map("{:.4f}".format)
+                        _gs_df["std_test_score"]  = _gs_df["std_test_score"].map("{:.4f}".format)
+                        st.dataframe(_gs_df, use_container_width=True)
+
+        # ── Model Comparison ──────────────────────────────────────────────────
+        st.markdown("---")
+        _btn_c1, _btn_c2 = st.columns([1, 1])
         _auto_report = st.session_state.pop("auto_run_report", False)
-        if st.button("Generate Report", type="primary") or _auto_report:
+        _run_compare = _btn_c2.button("Compare All Models")
+
+        if _run_compare and not is_quantum:
+            _cmp_folds = min(k_folds, int(pd.Series(y_final).value_counts().min()))
+            if _cmp_folds < 2:
+                st.error("Need at least 2 samples per class.")
+            else:
+                _cmp_kf = StratifiedKFold(n_splits=_cmp_folds, shuffle=True, random_state=seed_val)
+                _cmp_clfs = {
+                    "Classical SVM":       SVC(kernel="rbf", C=svm_c, random_state=seed_val),
+                    "Logistic Regression": LogisticRegression(max_iter=1000, random_state=seed_val),
+                    "Random Forest":       RandomForestClassifier(n_estimators=200, random_state=seed_val),
+                }
+                _cmp_rows = []
+                _cmp_prog = st.progress(0)
+                for _ci, (_cname, _clf) in enumerate(_cmp_clfs.items()):
+                    _yt, _yp = [], []
+                    for _tr, _te in _cmp_kf.split(X_final, y_final):
+                        _sc = StandardScaler()
+                        _Xtr = _sc.fit_transform(X_final[_tr])
+                        _Xte = _sc.transform(X_final[_te])
+                        _clf.fit(_Xtr, y_final[_tr])
+                        _yp.extend(_clf.predict(_Xte))
+                        _yt.extend(y_final[_te])
+                    _cmp_rows.append({
+                        "Model":       _cname,
+                        "Accuracy":    round(accuracy(_yt, _yp), 4),
+                        "Weighted F1": round(f1_score(_yt, _yp, average="weighted", zero_division=0), 4),
+                    })
+                    _cmp_prog.progress((_ci + 1) / len(_cmp_clfs))
+                _cmp_prog.empty()
+
+                _cmp_df = pd.DataFrame(_cmp_rows).set_index("Model")
+                st.markdown("##### Model Comparison")
+                st.dataframe(_cmp_df, use_container_width=True)
+
+                _fig_cmp, _ax_cmp = plt.subplots(figsize=(6, 3), facecolor="#0C0C18")
+                _ax_cmp.set_facecolor("#0C0C18")
+                _x_pos = np.arange(len(_cmp_df))
+                _w = 0.35
+                _ax_cmp.bar(_x_pos - _w/2, _cmp_df["Accuracy"],    _w, label="Accuracy",    color="#818CF8")
+                _ax_cmp.bar(_x_pos + _w/2, _cmp_df["Weighted F1"], _w, label="Weighted F1", color="#34D399")
+                _ax_cmp.set_xticks(_x_pos)
+                _ax_cmp.set_xticklabels(_cmp_df.index, fontsize=9, color="#94A3B8")
+                _ax_cmp.set_ylim(0, 1.1)
+                _ax_cmp.tick_params(colors="#94A3B8", labelsize=8)
+                _ax_cmp.legend(fontsize=8, labelcolor="#CBD5E1", facecolor="#0C0C18",
+                               edgecolor=(99/255, 102/255, 241/255, 0.3))
+                for _sp in _ax_cmp.spines.values():
+                    _sp.set_edgecolor((148/255, 163/255, 184/255, 0.15))
+                plt.tight_layout()
+                st.pyplot(_fig_cmp)
+                plt.close(_fig_cmp)
+
+        if st.button("Generate Report", type="primary", key="gen_report") or _auto_report:
             class_counts    = pd.Series(y_final).value_counts()
             effective_folds = min(k_folds, int(class_counts.min()))
             if effective_folds < 2:
