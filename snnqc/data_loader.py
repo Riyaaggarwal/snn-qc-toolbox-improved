@@ -11,6 +11,47 @@ DEFAULT_FEATURE_NAMES = [
 ]
 
 
+def dataframe_to_csv_bytes(df):
+    return df.to_csv(index=False).encode("utf-8")
+
+
+def combined_csv_template():
+    return pd.DataFrame(
+        [
+            {"sample_id": "trial_001", "time": 0, "label": "class_a", "sensor_1": 0.12, "sensor_2": 0.32},
+            {"sample_id": "trial_001", "time": 1, "label": "class_a", "sensor_1": 0.18, "sensor_2": 0.29},
+            {"sample_id": "trial_002", "time": 0, "label": "class_b", "sensor_1": 0.76, "sensor_2": 0.15},
+            {"sample_id": "trial_002", "time": 1, "label": "class_b", "sensor_1": 0.71, "sensor_2": 0.19},
+        ]
+    )
+
+
+def sample_csv_template():
+    return pd.DataFrame(
+        [
+            {"sensor_1": 0.12, "sensor_2": 0.32, "sensor_3": 0.44},
+            {"sensor_1": 0.18, "sensor_2": 0.29, "sensor_3": 0.49},
+            {"sensor_1": 0.21, "sensor_2": 0.35, "sensor_3": 0.52},
+        ]
+    )
+
+
+def labels_csv_template():
+    return pd.DataFrame({"label": ["class_a", "class_b", "class_a"]})
+
+
+def dataset_summary(X_raw, y_data, feature_names):
+    classes = pd.Series(y_data).dropna()
+    return {
+        "samples": int(X_raw.shape[0]),
+        "timepoints": int(X_raw.shape[1]),
+        "features": int(X_raw.shape[2]),
+        "labels": int(len(y_data)),
+        "feature_names": list(feature_names),
+        "class_counts": classes.value_counts().sort_index(key=lambda index: index.astype(str)),
+    }
+
+
 def load_builtin_eeg_dataset(base_path="./example_data/wrist_movement_eeg/"):
     """Load the bundled EEG demo dataset as a raw tensor."""
     if not os.path.exists(base_path):

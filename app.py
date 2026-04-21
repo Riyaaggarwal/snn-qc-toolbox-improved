@@ -10,15 +10,19 @@ import plotly.graph_objects as go
 import base64
 
 from snnqc.data_loader import (
-    DEFAULT_FEATURE_NAMES,
+    combined_csv_template,
+    dataframe_to_csv_bytes,
+    dataset_summary,
+    labels_csv_template,
     load_builtin_eeg_dataset as load_builtin_eeg_dataset_uncached,
     parse_combined_csv,
     parse_sample_csvs,
     read_uploaded_csv,
+    sample_csv_template,
 )
 
 # --- SKLEARN IMPORTS ---
-from sklearn.metrics import accuracy_score as accuracy, confusion_matrix, ConfusionMatrixDisplay, f1_score
+from sklearn.metrics import accuracy_score as accuracy, classification_report, confusion_matrix, ConfusionMatrixDisplay, f1_score
 from sklearn.model_selection import StratifiedKFold
 from sklearn.linear_model import LogisticRegression
 from sklearn.preprocessing import StandardScaler
@@ -57,6 +61,93 @@ st.markdown("""
         [Pipeline: Data Upload & Spike Encoding &rarr; NeuCube Spatio-temporal Learning &rarr; Spiking Feature Extraction &rarr; Quantum Kernel Classification]
     </div>
     """, unsafe_allow_html=True)
+
+
+def render_help_page():
+    st.markdown("## Help & App Info")
+    st.write(
+        "SNN-QC is a workbench for exploring time-series classification with spike encoding, "
+        "NeuCube-style reservoir dynamics, spiking feature extraction, and classical or quantum classifiers."
+    )
+
+    tab_overview, tab_data, tab_pipeline, tab_results = st.tabs(
+        ["Overview", "Data Formats", "Pipeline", "Results"]
+    )
+
+    with tab_overview:
+        st.markdown(
+            """
+            ### What this app is for
+            Use this app when you have labelled time-series samples and want to test whether spiking
+            neural network features help separate classes.
+
+            The built-in EEG dataset is a reference demo. Uploaded datasets can come from EEG,
+            sensors, wearables, industrial monitoring, finance, or any other repeated time-series source.
+
+            ### Current scope
+            - Works best with clean, regularly sampled time-series data.
+            - Every sample must have the same number of timepoints.
+            - Quantum Kernel SVM currently supports exactly two selected features and two selected classes.
+            - Classical SVM and Logistic Regression can use multiple features and multiple classes.
+            """
+        )
+
+    with tab_data:
+        st.markdown(
+            """
+            ### Single combined CSV
+            Use one row per sample-timepoint. Include:
+            - a sample ID column
+            - a label column
+            - an optional time/order column
+            - one or more numeric feature columns
+
+            ### Multiple sample CSVs
+            Use one CSV per sample. Every sample CSV must have the same rows and columns.
+            Upload a separate labels CSV with one label per sample file. Labels are matched to files
+            in sorted filename order.
+
+            ### Before running
+            Check the parsed preview for samples, timepoints, feature count, and class balance.
+            Uneven class balance can make cross-validation less reliable.
+            """
+        )
+
+    with tab_pipeline:
+        st.markdown(
+            """
+            ### Processing stages
+            1. Data is loaded into a `samples x timepoints x features` tensor.
+            2. Delta encoding converts raw values into spike trains.
+            3. NeuCube reservoir simulation learns spatio-temporal activity patterns.
+            4. Spike counts are pooled into SNN features.
+            5. A classifier is evaluated with stratified cross-validation.
+
+            ### Main controls
+            - Delta Threshold controls spike sensitivity.
+            - Reservoir C and L control reservoir connectivity.
+            - STDP parameters control weight updates during spatio-temporal learning.
+            - Membrane Threshold controls reservoir neuron firing.
+            """
+        )
+
+    with tab_results:
+        st.markdown(
+            """
+            ### How to read outputs
+            - Accuracy shows the overall proportion of correct predictions.
+            - Weighted F1 is more informative when class counts are uneven.
+            - Per-class metrics show which classes are easy or hard to identify.
+            - Confusion matrix shows which classes are being confused.
+            - Exported SNN features can be reused in notebooks or other modelling tools.
+            """
+        )
+
+
+page = st.sidebar.radio("Page", ["Workbench", "Help & App Info"])
+if page == "Help & App Info":
+    render_help_page()
+    st.stop()
 
 
 # ==========================================
@@ -141,6 +232,30 @@ dataset_source = st.radio(
     horizontal=True,
 )
 
+with st.expander("CSV Templates"):
+    template_col_1, template_col_2, template_col_3 = st.columns(3)
+    with template_col_1:
+        st.download_button(
+            "Combined CSV template",
+            dataframe_to_csv_bytes(combined_csv_template()),
+            file_name="snnqc_combined_template.csv",
+            mime="text/csv",
+        )
+    with template_col_2:
+        st.download_button(
+            "Sample CSV template",
+            dataframe_to_csv_bytes(sample_csv_template()),
+            file_name="snnqc_sample_template.csv",
+            mime="text/csv",
+        )
+    with template_col_3:
+        st.download_button(
+            "Labels CSV template",
+            dataframe_to_csv_bytes(labels_csv_template()),
+            file_name="snnqc_labels_template.csv",
+            mime="text/csv",
+        )
+
 combined_df = None
 combined_config = {}
 sample_files = []
@@ -184,6 +299,23 @@ elif dataset_source == "Single combined CSV":
             "feature_cols": feature_cols,
         }
 
+        preview_X, preview_y, preview_features, preview_err = parse_combined_csv(
+            combined_df, sample_col, label_col, time_col, feature_cols
+        )
+        if preview_err:
+            st.warning(preview_err)
+        else:
+            preview = dataset_summary(preview_X, preview_y, preview_features)
+            metric_1, metric_2, metric_3 = st.columns(3)
+            metric_1.metric("Samples", preview["samples"])
+            metric_2.metric("Timepoints", preview["timepoints"])
+            metric_3.metric("Features", preview["features"])
+            st.write("Class balance")
+            st.dataframe(
+                preview["class_counts"].rename("count").reset_index().rename(columns={"index": "class"}),
+                use_container_width=True,
+            )
+
 elif dataset_source == "Multiple sample CSVs":
     st.caption("Expected format: each sample CSV is timepoints x features. Labels CSV must contain one label per sample file, in sorted filename order.")
     sample_has_header = st.checkbox("Sample CSVs have a header row", value=True)
@@ -197,6 +329,24 @@ elif dataset_source == "Multiple sample CSVs":
     if sample_labels_file is not None:
         sample_labels_df = read_uploaded_csv(sample_labels_file, labels_has_header)
         st.dataframe(sample_labels_df.head(20), use_container_width=True)
+
+    if sample_files and sample_labels_df is not None:
+        preview_X, preview_y, preview_features, preview_err = parse_sample_csvs(
+            sample_files, sample_labels_df, sample_has_header
+        )
+        if preview_err:
+            st.warning(preview_err)
+        else:
+            preview = dataset_summary(preview_X, preview_y, preview_features)
+            metric_1, metric_2, metric_3 = st.columns(3)
+            metric_1.metric("Samples", preview["samples"])
+            metric_2.metric("Timepoints", preview["timepoints"])
+            metric_3.metric("Features", preview["features"])
+            st.write("Class balance")
+            st.dataframe(
+                preview["class_counts"].rename("count").reset_index().rename(columns={"index": "class"}),
+                use_container_width=True,
+            )
 
 if st.button("Load & Encode Data"):
     with st.spinner(f"Loading files and applying Delta Encoding (Thresh={threshold_val})..."):
@@ -533,6 +683,16 @@ if st.session_state.get('data_ready', False):
         
         # Display the Shape (The proof that Step 3 is done)
         st.write(f"**Extracted Features Shape:** {st.session_state['snn_features'].shape}")
+
+        features_df = pd.DataFrame(st.session_state['snn_features'], columns=feature_names)
+        features_df.insert(0, "label", y)
+        features_df.insert(0, "sample_index", np.arange(len(features_df)))
+        st.download_button(
+            "Download SNN Features",
+            dataframe_to_csv_bytes(features_df),
+            file_name="snn_features.csv",
+            mime="text/csv",
+        )
         
         # Optional: Add a plot here if you want to visualize the features
         ##with st.expander("Inspect Feature Vector"):
@@ -657,6 +817,22 @@ if st.session_state.get('data_ready', False):
             metric_col_1, metric_col_2 = st.columns(2)
             metric_col_1.metric("Accuracy", f"{final_acc:.2%}")
             metric_col_2.metric("Weighted F1", f"{final_f1:.2%}")
+
+            report = classification_report(
+                y_total2,
+                pred_total2,
+                output_dict=True,
+                zero_division=0,
+            )
+            report_df = pd.DataFrame(report).T
+            st.markdown("##### Per-Class Metrics")
+            st.dataframe(report_df, use_container_width=True)
+            st.download_button(
+                "Download Classification Metrics",
+                dataframe_to_csv_bytes(report_df.reset_index().rename(columns={"index": "class"})),
+                file_name="classification_metrics.csv",
+                mime="text/csv",
+            )
             
             # --- CONFUSION MATRIX ---
             st.markdown("##### Confusion Matrix")   # smaller than subheader
