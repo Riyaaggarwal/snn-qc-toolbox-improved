@@ -1,6 +1,10 @@
 # SNN-QC-Toolbox
 SNN-QC: Spiking Neural Network-Quantum Computational Toolbox
 
+This repository extends the original SNN-QC toolbox into a more general-purpose Streamlit workbench.
+Original toolbox and research prototype developed by **Dr. Ravi Kumar Jha**, Intelligent Systems Research
+Centre, Ulster University. Original app contact: **Jha-R@ulster.ac.uk**.
+
 <img width="1992" height="444" alt="image" src="https://github.com/user-attachments/assets/69f622ac-90b4-45a4-858e-72b0069de240" />
 
 

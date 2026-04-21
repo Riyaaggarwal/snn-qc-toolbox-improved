@@ -174,6 +174,15 @@ def render_help_page():
     with tab_about:
         st.markdown(
             """
+            ### Credits
+            Original SNN-QC toolbox and research prototype developed by **Dr. Ravi Kumar Jha**
+            at the Intelligent Systems Research Centre, Ulster University.
+
+            Contact from original app: **Jha-R@ulster.ac.uk**
+
+            This repository extends the original work into a more general-purpose Streamlit
+            workbench for reusable time-series experiments.
+
             ### Data and materials
             The EEG dataset and NeuCube software environment are made available from Auckland
             University of Technology at https://kedri.aut.ac.nz/neucube.
@@ -388,7 +397,8 @@ k_folds = st.sidebar.slider("CV Folds", 2, 10, 5)
 st.sidebar.markdown("---")
 st.sidebar.info(
     "**SNN-QC Workbench**\n\n"
-    "Reusable spiking-feature classification for labelled time-series datasets."
+    "Reusable spiking-feature classification for labelled time-series datasets.\n\n"
+    "Original toolbox: **Dr. Ravi Kumar Jha**, Ulster University."
 )
 
 render_workflow_dashboard()
