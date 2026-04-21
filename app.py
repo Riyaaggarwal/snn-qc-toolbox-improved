@@ -23,8 +23,14 @@ from snnqc.data_loader import (
     read_uploaded_csv,
     sample_csv_template,
 )
-from snnqc.plots import feature_layout_figure, raw_and_spike_figure
+from snnqc.plots import (
+    feature_layout_figure,
+    feature_spike_density_figure,
+    is_eeg_data,
+    raw_and_spike_figure,
+)
 
+from sklearn.ensemble import RandomForestClassifier
 from sklearn.linear_model import LogisticRegression
 from sklearn.metrics import (
     ConfusionMatrixDisplay,
@@ -415,7 +421,11 @@ def load_builtin_eeg_dataset():
     return _load_builtin_eeg_dataset()
 
 
-def encode_dataset(X_raw, thresh):
+def encode_dataset(X_raw, thresh, normalize=False):
+    if normalize:
+        mean = X_raw.mean(dim=(0, 1), keepdim=True)
+        std  = X_raw.std(dim=(0, 1), keepdim=True).clamp(min=1e-8)
+        X_raw = (X_raw - mean) / std
     encoder = Delta(threshold=thresh)
     return encoder.encode_dataset(X_raw)
 
@@ -663,41 +673,67 @@ st.sidebar.markdown("""
 """, unsafe_allow_html=True)
 
 st.sidebar.markdown("**Analysis Settings**")
+normalize_signals = st.sidebar.checkbox(
+    "Normalize signals",
+    value=False,
+    help=(
+        "Z-score each feature before spike encoding. "
+        "Removes amplitude differences between channels — recommended when your features "
+        "have very different scales (e.g. mixing voltage and acceleration)."
+    ),
+)
 threshold_val = st.sidebar.slider(
     "Spike sensitivity", 0.1, 1.5, float(_defaults.get("spike_sensitivity", 0.8)), 0.05,
-    help="Minimum signal change required to generate a spike. Lower = more spikes.",
+    help=(
+        "Minimum change between consecutive timesteps that counts as a spike. "
+        "Lower → more spikes (sensitive to small fluctuations). "
+        "Higher → only large jumps become spikes."
+    ),
 )
 k_folds = st.sidebar.slider(
     "Validation folds", 2, 10, int(_defaults.get("validation_folds", 5)),
-    help="Number of stratified cross-validation folds.",
+    help=(
+        "Stratified k-fold cross-validation: data is split into K equal parts; "
+        "the model trains on K-1 and tests on the held-out fold, rotating K times. "
+        "More folds = more reliable estimate, but slower."
+    ),
 )
 svm_c = st.sidebar.number_input(
     "Model flexibility (C)", value=float(_defaults.get("model_flexibility", 1.0)),
     min_value=0.001,
-    help="SVM regularisation. Higher = less regularisation.",
+    help=(
+        "Regularisation strength for SVM and Logistic Regression. "
+        "Higher → tighter fit to training data (risk of overfitting on small datasets). "
+        "Lower → smoother decision boundary."
+    ),
 )
 
 with st.sidebar.expander("Advanced engine settings"):
     res_c = st.slider(
         "Reservoir connectivity", 0.1, 1.0, float(_defaults.get("reservoir_c", 0.4)), 0.05,
+        help="Probability that any two reservoir neurons are connected. Higher = denser, richer dynamics but slower.",
     )
     res_l = st.slider(
         "Distance scale", 0.01, 1.0, float(_defaults.get("reservoir_l", 0.169)), 0.001,
+        help="Controls how quickly connection probability drops with distance. Lower = only nearby neurons connect.",
     )
     stdp_pos = st.number_input(
         "STDP positive update", value=float(_defaults.get("stdp_positive", 0.001)), format="%.4f",
+        help="How much to strengthen a synapse when pre-synaptic firing precedes post-synaptic firing (Hebbian learning).",
     )
     stdp_neg = st.number_input(
         "STDP negative update", value=float(_defaults.get("stdp_negative", -0.01)), format="%.4f",
+        help="How much to weaken a synapse when post-synaptic firing precedes pre-synaptic firing (anti-Hebbian).",
     )
     mem_thr_val = st.number_input(
         "Membrane threshold", value=float(_defaults.get("membrane_threshold", 0.01)), format="%.3f",
+        help="Accumulated charge a neuron needs before it fires. Higher → neurons fire less often, sparser activity.",
     )
     reservoir_size = st.select_slider(
         "Reservoir size",
         options=["Fast (5×5×5)", "Standard (7×7×7)", "Full (10×10×10)"],
         value=_defaults.get("reservoir_size", "Standard (7×7×7)"),
-        help="Larger = better features but slower. Fast ≈30s, Standard ≈90s, Full ≈3–5min on cloud.",
+        help="Larger cube = more neurons = richer features, but longer simulation. Fast ≈30s, Standard ≈90s, Full ≈3–5min on cloud.",
     )
 
 _CUBE_SHAPES = {
@@ -725,7 +761,7 @@ torch.manual_seed(seed_val)
 
 # ── State invalidation ────────────────────────────────────────────────────────
 
-encoding_signature   = {"delta_threshold": threshold_val}
+encoding_signature   = {"delta_threshold": threshold_val, "normalize": normalize_signals}
 simulation_signature = {
     "reservoir_c": res_c, "reservoir_l": res_l,
     "stdp_a_pos": stdp_pos, "stdp_a_neg": stdp_neg,
@@ -839,6 +875,77 @@ with t_rep:
     st.write("")
     st.caption("Classical SVM and Logistic Regression support multiclass. Quantum Kernel SVM: binary, 2 features, experimental.")
 
+
+# ══════════════════════════════════════════════════════════════════════════════
+# QUICK START
+# ══════════════════════════════════════════════════════════════════════════════
+
+st.markdown("""
+<div style="background:linear-gradient(135deg,rgba(99,102,241,0.08),rgba(139,92,246,0.05));
+    border:1px solid rgba(99,102,241,0.2);border-radius:14px;
+    padding:1.3rem 1.6rem;margin-bottom:1.5rem;">
+  <div style="font-size:1rem;font-weight:600;color:#A5B4FC;margin-bottom:0.35rem;">
+    ⚡ Quick Start
+  </div>
+  <div style="font-size:0.85rem;color:#64748B;">
+    New here? Run the full pipeline on the built-in EEG demo in one click — or use the steps below for your own data.
+  </div>
+</div>
+""", unsafe_allow_html=True)
+
+_qs_col, _qs_desc = st.columns([1, 3])
+_run_full_demo = _qs_col.button("▶ Run Full Demo", type="primary", use_container_width=True)
+_qs_desc.caption(
+    "Loads the EEG wrist-movement dataset → delta-encodes → simulates NeuCube reservoir "
+    "→ runs SVM cross-validation. Uses the current sidebar settings."
+)
+
+if _run_full_demo:
+    _err = None
+    with st.spinner("Loading EEG demo dataset…"):
+        _X_raw, _y_data, _feat_names, _err = load_builtin_eeg_dataset()
+
+    if _err:
+        st.error(_err)
+    else:
+        with st.spinner("Delta encoding…"):
+            _X_enc = encode_dataset(_X_raw, threshold_val, normalize_signals)
+
+        clear_dataset_state()
+        st.session_state.update({
+            "X_raw": _X_raw, "X": _X_enc, "y": _y_data,
+            "feature_names": _feat_names,
+            "dataset_name": "Example EEG dataset",
+            "data_ready": True,
+            "encoding_signature": encoding_signature,
+            "map_initialised": True,
+            "simulation_signature": simulation_signature,
+        })
+
+        _n_neurons = cube_shape[0] * cube_shape[1] * cube_shape[2]
+        with st.spinner(
+            f"Simulating reservoir ({_n_neurons} neurons × {_X_enc.shape[0]} samples)… "
+            f"{_CUBE_TIMES[reservoir_size]}"
+        ):
+            _res  = Reservoir(cube_shape=cube_shape, inputs=_X_enc.shape[2], c=res_c, l=res_l)
+            _lr   = STDP(a_pos=stdp_pos, a_neg=stdp_neg)
+            _sam  = SpikeCount()
+            _acts = _res.simulate(
+                _X_enc, train=True, learning_rule=_lr,
+                mem_thr=mem_thr_val, refractory_period=5, verbose=True,
+            )
+            _svecs = _sam.sample(_acts)
+            _snn_f = extract_features(_svecs, _res.w_in)
+
+            st.session_state["snn_features"]        = _snn_f
+            st.session_state["features_ready"]      = True
+            st.session_state["simulation_signature"] = simulation_signature
+
+        st.session_state["auto_run_report"] = True
+        st.success("Pipeline complete! The report is ready below. ↓")
+        st.rerun()
+
+st.divider()
 
 # ══════════════════════════════════════════════════════════════════════════════
 # STEP 1 — CONNECT YOUR DATA
@@ -959,7 +1066,7 @@ if st.button("Prepare Dataset", type="primary"):
         st.error(err)
     else:
         with st.spinner("Applying delta encoding…"):
-            X_encoded = encode_dataset(X_raw, threshold_val)
+            X_encoded = encode_dataset(X_raw, threshold_val, normalize_signals)
 
         clear_dataset_state()
         st.session_state.update({
@@ -1020,15 +1127,29 @@ if st.session_state.get("data_ready"):
     # ── STEP 3: Analysis Engine ───────────────────────────────────────────────
     section_header(3, "Run Analysis", "Initialise the reservoir, then extract spiking features.")
 
-    if st.button("Prepare Analysis Engine"):
+    _col_prep, _col_full = st.columns([1, 1])
+    if _col_prep.button("Prepare Analysis Engine",
+                        help="Inspect the feature map before running the simulation."):
         st.session_state["simulation_signature"] = simulation_signature
         st.session_state["map_initialised"] = True
 
+    _run_full_pipe = _col_full.button(
+        "▶ Run Full Pipeline", type="primary",
+        help="Skip inspection — simulate the reservoir and generate the report in one go.",
+    )
+
     if st.session_state.get("map_initialised"):
         with st.expander("Feature Map", expanded=True):
-            c1, _ = st.columns([1, 4])
-            clean_view = c1.toggle("Clean view", value=True)
-            st.plotly_chart(feature_layout_figure(feature_names, clean_view), use_container_width=True)
+            _eeg = is_eeg_data(feature_names)
+            if _eeg:
+                c1, _ = st.columns([1, 4])
+                clean_view = c1.toggle("Clean view", value=True)
+                st.plotly_chart(feature_layout_figure(feature_names, clean_view), use_container_width=True)
+            else:
+                st.caption("Non-EEG data — showing spike density per feature instead of head model.")
+                _fig_sd = feature_spike_density_figure(X, feature_names)
+                st.pyplot(_fig_sd)
+                plt.close(_fig_sd)
 
         st.divider()
 
@@ -1041,7 +1162,7 @@ if st.session_state.get("data_ready"):
         c1, c2 = st.columns([1, 3])
         run_sim = c1.button("Run Feature Extraction", type="primary")
 
-        if run_sim:
+        if run_sim or _run_full_pipe:
             gif_path = _HERE / "brain_activity.gif"
             with c2:
                 brain_ph = st.empty()
@@ -1068,11 +1189,37 @@ if st.session_state.get("data_ready"):
                 snn_features  = extract_features(state_vectors, res.w_in)
 
                 st.session_state["snn_features"]        = snn_features
-                st.session_state["features_ready"]       = True
+                st.session_state["features_ready"]      = True
                 st.session_state["simulation_signature"] = simulation_signature
 
             brain_ph.empty()
             st.success("Feature extraction complete.")
+            if _run_full_pipe:
+                st.session_state["auto_run_report"] = True
+                st.rerun()
+
+    elif _run_full_pipe:
+        # "Run Full Pipeline" clicked before "Prepare Analysis Engine" — do both
+        st.session_state["map_initialised"] = True
+        st.session_state["simulation_signature"] = simulation_signature
+        n_neurons = cube_shape[0] * cube_shape[1] * cube_shape[2]
+        with st.spinner(f"Simulating reservoir ({n_neurons} neurons × {X.shape[0]} samples)… {_CUBE_TIMES[reservoir_size]}"):
+            res           = Reservoir(cube_shape=cube_shape, inputs=X.shape[2], c=res_c, l=res_l)
+            learning_rule = STDP(a_pos=stdp_pos, a_neg=stdp_neg)
+            sam           = SpikeCount()
+            s_act_all    = res.simulate(
+                X, train=True, learning_rule=learning_rule,
+                mem_thr=mem_thr_val, refractory_period=5, verbose=True,
+            )
+            state_vectors = sam.sample(s_act_all)
+            snn_features  = extract_features(state_vectors, res.w_in)
+            st.session_state["snn_features"]        = snn_features
+            st.session_state["features_ready"]      = True
+            st.session_state["simulation_signature"] = simulation_signature
+
+        st.session_state["auto_run_report"] = True
+        st.success("Pipeline complete!")
+        st.rerun()
 
     # ── STEP 4: Feature Table ─────────────────────────────────────────────────
     if st.session_state.get("features_ready"):
@@ -1101,22 +1248,26 @@ if st.session_state.get("data_ready"):
 
         available_classes = sorted(pd.Series(y).dropna().unique(), key=str)
 
-        classifier_name = st.selectbox(
+        classifier_name = st.radio(
             "Classifier",
-            [
-                "Classical SVM",
-                "Logistic Regression",
-                "Quantum Kernel SVM  [experimental — binary, 2 features, slow]",
-            ],
+            ["Classical SVM", "Logistic Regression", "Random Forest"],
+            horizontal=True,
         )
-        is_quantum = "Quantum" in classifier_name
+        is_quantum = False
 
-        if is_quantum:
-            st.warning(
-                "**Quantum Kernel SVM** simulates a 2-qubit quantum circuit classically. "
-                "Requires exactly **2 classes** and **2 features**. "
-                "Can be very slow for large datasets. For general use, choose Classical SVM or Logistic Regression."
+        with st.expander("Advanced / Research Models"):
+            _use_quantum = st.checkbox(
+                "Quantum Kernel SVM  [experimental — binary, 2 features, slow]",
+                value=False,
             )
+            if _use_quantum:
+                classifier_name = "Quantum Kernel SVM"
+                is_quantum = True
+                st.warning(
+                    "**Quantum Kernel SVM** simulates a 2-qubit quantum circuit classically. "
+                    "Requires exactly **2 classes** and **2 features**. "
+                    "Can be very slow for large datasets. Use Classical SVM for general work."
+                )
 
         if len(available_classes) < 2:
             st.warning("At least two classes are required.")
@@ -1169,7 +1320,8 @@ if st.session_state.get("data_ready"):
                 except Exception as exc:
                     st.info(f"Circuit diagram unavailable: {exc}")
 
-        if st.button("Generate Report", type="primary"):
+        _auto_report = st.session_state.pop("auto_run_report", False)
+        if st.button("Generate Report", type="primary") or _auto_report:
             class_counts    = pd.Series(y_final).value_counts()
             effective_folds = min(k_folds, int(class_counts.min()))
             if effective_folds < 2:
@@ -1178,17 +1330,21 @@ if st.session_state.get("data_ready"):
 
             kf = StratifiedKFold(n_splits=effective_folds, shuffle=True, random_state=seed_val)
             y_total, pred_total = [], []
+            rf_importances = None
 
             if is_quantum:
                 classifier = SVC(kernel=kernel_matrix, C=svm_c)
             elif "Classical SVM" in classifier_name:
                 classifier = SVC(kernel="rbf", C=svm_c, random_state=seed_val)
+            elif "Random Forest" in classifier_name:
+                classifier = RandomForestClassifier(n_estimators=200, random_state=seed_val)
             else:
                 classifier = LogisticRegression(max_iter=1000, random_state=seed_val)
 
             progress_bar = st.progress(0)
             status_txt   = st.empty()
 
+            _imp_accum = np.zeros(len(selected_feature_names))
             for i, (train_idx, test_idx) in enumerate(kf.split(X_final, y_final)):
                 status_txt.caption(f"Cross-validation fold {i+1} / {effective_folds}…")
                 X_train, X_test = X_final[train_idx], X_final[test_idx]
@@ -1202,6 +1358,12 @@ if st.session_state.get("data_ready"):
                 pred_total.extend(classifier.predict(X_test))
                 y_total.extend(y_test)
                 progress_bar.progress((i + 1) / effective_folds)
+
+                if hasattr(classifier, "feature_importances_"):
+                    _imp_accum += classifier.feature_importances_
+
+            if hasattr(classifier, "feature_importances_"):
+                rf_importances = _imp_accum / effective_folds
 
             status_txt.empty()
             progress_bar.empty()
@@ -1252,6 +1414,31 @@ if st.session_state.get("data_ready"):
                     spine.set_edgecolor((148/255, 163/255, 184/255, 0.15))
                 st.pyplot(fig_cm)
                 plt.close(fig_cm)
+
+            # ── Feature importance (Random Forest only) ───────────────────
+            if rf_importances is not None:
+                st.markdown("##### Feature Importance")
+                _imp_order = np.argsort(rf_importances)[::-1]
+                _imp_names = [selected_feature_names[i] for i in _imp_order]
+                _imp_vals  = rf_importances[_imp_order]
+
+                _fig_imp, _ax_imp = plt.subplots(
+                    figsize=(max(6, len(_imp_names) * 0.55), 3.5),
+                    facecolor="#0C0C18",
+                )
+                _ax_imp.set_facecolor("#0C0C18")
+                _colors = plt.cm.plasma(np.linspace(0.25, 0.85, len(_imp_names)))
+                _ax_imp.bar(range(len(_imp_names)), _imp_vals, color=_colors, edgecolor="none", width=0.72)
+                _ax_imp.set_xticks(range(len(_imp_names)))
+                _ax_imp.set_xticklabels(_imp_names, rotation=45, ha="right", fontsize=8)
+                _ax_imp.set_ylabel("Mean importance", fontsize=8, color="#94A3B8")
+                _ax_imp.set_title("Random Forest — averaged over CV folds", fontsize=9, color="#94A3B8")
+                _ax_imp.tick_params(colors="#94A3B8", labelsize=8)
+                for spine in _ax_imp.spines.values():
+                    spine.set_edgecolor((148/255, 163/255, 184/255, 0.15))
+                plt.tight_layout()
+                st.pyplot(_fig_imp)
+                plt.close(_fig_imp)
 
             # ── Downloads ────────────────────────────────────────────────────
             st.markdown("##### Export")

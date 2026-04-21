@@ -119,3 +119,35 @@ def feature_layout_figure(feature_names, clean_view=True):
         showlegend=False,
     )
     return fig
+
+
+def is_eeg_data(feature_names):
+    return any(str(n).replace("*", "") in STANDARD_10_20 for n in feature_names)
+
+
+def feature_spike_density_figure(X_encoded, feature_names):
+    """Spike density bar chart per feature — shown for non-EEG data instead of 3D head model."""
+    arr = X_encoded.numpy() if hasattr(X_encoded, "numpy") else np.asarray(X_encoded, dtype=float)
+    density = arr.mean(axis=(0, 1))
+    n = len(feature_names)
+    colors = plt.cm.plasma(np.linspace(0.25, 0.85, n))
+
+    fig, ax = plt.subplots(figsize=(max(7, n * 0.6), 3.8))
+    ax.bar(range(n), density, color=colors, edgecolor="none", width=0.72)
+    ax.set_xticks(range(n))
+    ax.set_xticklabels(feature_names, rotation=45, ha="right", fontsize=9)
+    ax.set_ylabel("Mean Spike Density", fontsize=9)
+    ax.set_title("Spike Activity per Feature", fontsize=11)
+    ax.set_ylim(0, max(float(density.max()) * 1.3, 0.02))
+    ax.grid(axis="y", alpha=0.25, linestyle="--")
+
+    bg = "#0C0C18"
+    fig.patch.set_facecolor(bg)
+    ax.set_facecolor(bg)
+    ax.yaxis.label.set_color("#F1F5F9")
+    ax.title.set_color("#F1F5F9")
+    ax.tick_params(colors="#94A3B8")
+    for spine in ax.spines.values():
+        spine.set_edgecolor((148/255, 163/255, 184/255, 0.15))
+    plt.tight_layout()
+    return fig
