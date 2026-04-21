@@ -583,7 +583,6 @@ def render_dataset_preview(X_raw, y_data, feature_names):
     st.caption("Class distribution")
     st.dataframe(
         preview["class_counts"].rename("count").reset_index().rename(columns={"index": "class"}),
-        use_container_width=True,
     )
 
 
@@ -596,7 +595,6 @@ def render_loaded_dataset_summary(X, y, feature_names):
     c4.metric("Classes",    len(summary["class_counts"]))
     st.dataframe(
         summary["class_counts"].rename("count").reset_index().rename(columns={"index": "class"}),
-        use_container_width=True,
     )
     with st.expander("Feature names"):
         st.write(", ".join(map(str, feature_names)))
@@ -1049,7 +1047,7 @@ elif dataset_source == "Single uploaded table":
 
     if combined_file is not None:
         combined_df = read_uploaded_csv(combined_file, combined_has_header)
-        st.dataframe(combined_df.head(10), use_container_width=True)
+        st.dataframe(combined_df.head(10))
 
         columns = [str(col) for col in combined_df.columns]
         combined_df.columns = columns
@@ -1091,7 +1089,7 @@ elif dataset_source == "Multiple sample files":
 
     if sample_labels_file is not None:
         sample_labels_df = read_uploaded_csv(sample_labels_file, labels_has_header)
-        st.dataframe(sample_labels_df.head(10), use_container_width=True)
+        st.dataframe(sample_labels_df.head(10))
 
     if sample_files and sample_labels_df is not None:
         prev_X, prev_y, prev_feats, prev_err = parse_sample_csvs(
@@ -1218,7 +1216,7 @@ if st.session_state.get("data_ready"):
             if _eeg:
                 c1, _ = st.columns([1, 4])
                 clean_view = c1.toggle("Clean view", value=True)
-                st.plotly_chart(feature_layout_figure(feature_names, clean_view), use_container_width=True)
+                st.plotly_chart(feature_layout_figure(feature_names, clean_view))
             else:
                 st.caption("Non-EEG data — showing spike density per feature instead of head model.")
                 _fig_sd = feature_spike_density_figure(X, feature_names)
@@ -1443,7 +1441,7 @@ if st.session_state.get("data_ready"):
                     plt.tight_layout()
                     st.pyplot(_fig_sw)
                     plt.close(_fig_sw)
-                    st.dataframe(_sw_df, use_container_width=True)
+                    st.dataframe(_sw_df)
 
                     _best = _sw_df.loc[_sw_df["proxy_accuracy"].idxmax()]
                     st.success(
@@ -1574,7 +1572,7 @@ if st.session_state.get("data_ready"):
                         ].sort_values("rank_test_score")
                         _gs_df["mean_test_score"] = _gs_df["mean_test_score"].map("{:.4f}".format)
                         _gs_df["std_test_score"]  = _gs_df["std_test_score"].map("{:.4f}".format)
-                        st.dataframe(_gs_df, use_container_width=True)
+                        st.dataframe(_gs_df)
 
         # ── Model Comparison ──────────────────────────────────────────────────
         st.markdown("---")
@@ -1614,7 +1612,7 @@ if st.session_state.get("data_ready"):
 
                 _cmp_df = pd.DataFrame(_cmp_rows).set_index("Model")
                 st.markdown("##### Model Comparison")
-                st.dataframe(_cmp_df, use_container_width=True)
+                st.dataframe(_cmp_df)
 
                 _fig_cmp, _ax_cmp = plt.subplots(figsize=(6, 3), facecolor="#0C0C18")
                 _ax_cmp.set_facecolor("#0C0C18")
@@ -1705,7 +1703,7 @@ if st.session_state.get("data_ready"):
             report_df = pd.DataFrame(
                 classification_report(y_total, pred_total, output_dict=True, zero_division=0)
             ).T
-            st.dataframe(report_df, use_container_width=True)
+            st.dataframe(report_df)
 
             # ── Confusion matrix ──────────────────────────────────────────────
             st.markdown("##### Confusion Matrix")
