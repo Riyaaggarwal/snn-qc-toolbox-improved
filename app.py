@@ -61,30 +61,30 @@ DERIVED_STATE_KEYS = ["map_initialised", "features_ready", "snn_features"]
 st.markdown(
     """
     <style>
-        .stApp { background: #f8fafc; }
+        .stApp { background: #050505; color: #E5E7EB; }
         .block-container { padding-top: 1.4rem; max-width: 1180px; }
         .snnqc-hero {
-            border: 1px solid rgba(15, 23, 42, 0.10);
+            border: 1px solid rgba(148, 163, 184, 0.22);
             border-radius: 8px;
             padding: 1.4rem 1.6rem;
             margin-bottom: 1.15rem;
-            background: #ffffff;
-            box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+            background: #111111;
+            box-shadow: 0 1px 10px rgba(0, 0, 0, 0.45);
         }
         .snnqc-hero h1 {
             font-size: 2.1rem;
             line-height: 1.15;
             margin: 0 0 0.35rem 0;
             letter-spacing: 0;
-            color: #0f172a;
+            color: #F8FAFC;
         }
         .snnqc-hero p {
-            color: #475569;
+            color: #CBD5E1;
             font-size: 1rem;
             margin: 0;
         }
         .snnqc-eyebrow {
-            color: #2563eb;
+            color: #60A5FA;
             font-size: 0.78rem;
             font-weight: 700;
             letter-spacing: 0.08em;
@@ -92,21 +92,22 @@ st.markdown(
             margin-bottom: 0.35rem;
         }
         .snnqc-stage-note {
-            color: #64748b;
+            color: #94A3B8;
             font-size: 0.92rem;
         }
         [data-testid="stMetric"] {
-            background: #ffffff;
-            border: 1px solid rgba(15, 23, 42, 0.08);
+            background: #111111;
+            border: 1px solid rgba(148, 163, 184, 0.18);
             border-radius: 8px;
             padding: 0.85rem 0.95rem;
         }
         div[data-testid="stExpander"] {
-            background: #ffffff;
+            background: #0B0B0B;
             border-radius: 8px;
+            border: 1px solid rgba(148, 163, 184, 0.16);
         }
         section[data-testid="stSidebar"] {
-            background: #0f172a;
+            background: #000000;
         }
         section[data-testid="stSidebar"] * {
             color: #e2e8f0;
@@ -115,6 +116,10 @@ st.markdown(
         section[data-testid="stSidebar"] .stNumberInput label,
         section[data-testid="stSidebar"] .stSelectbox label {
             color: #e2e8f0 !important;
+        }
+        div[data-testid="stDataFrame"] {
+            border: 1px solid rgba(148, 163, 184, 0.16);
+            border-radius: 8px;
         }
     </style>
     <div class="snnqc-hero">
