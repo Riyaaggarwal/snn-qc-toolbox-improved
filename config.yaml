@@ -1,0 +1,30 @@
+app:
+  name: "SpikeSense Studio"
+  tagline: "Time-series classification with spiking features and explainable model results."
+
+defaults:
+  # Signal encoding
+  spike_sensitivity: 0.8
+
+  # Cross-validation
+  validation_folds: 5
+
+  # Classifier
+  model_flexibility: 1.0
+
+  # NeuCube reservoir
+  reservoir_c: 0.4
+  reservoir_l: 0.169
+
+  # STDP learning rule
+  stdp_positive: 0.001
+  stdp_negative: -0.01
+
+  # Neuron firing threshold
+  membrane_threshold: 0.01
+
+  # Reproducibility
+  random_seed: 42
+
+  # UI: max features shown in the multiselect by default
+  max_displayed_features: 14
