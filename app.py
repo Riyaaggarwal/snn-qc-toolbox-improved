@@ -54,6 +54,7 @@ DATASET_STATE_KEYS = [
     "X_raw", "X", "y", "feature_names", "dataset_name", "data_ready",
     "map_initialised", "features_ready", "snn_features"
 ]
+DERIVED_STATE_KEYS = ["map_initialised", "features_ready", "snn_features"]
 
 st.markdown(
     """
@@ -258,6 +259,49 @@ def render_loaded_dataset_summary(X, y, feature_names):
         st.write(", ".join(map(str, feature_names)))
 
 
+def clear_derived_state():
+    for key in DERIVED_STATE_KEYS:
+        st.session_state.pop(key, None)
+
+
+def clear_dataset_state():
+    for key in DATASET_STATE_KEYS:
+        st.session_state.pop(key, None)
+
+
+def result_interpretation(accuracy_value, f1_value, y_true, y_pred):
+    y_true_series = pd.Series(y_true)
+    baseline = y_true_series.value_counts(normalize=True).max()
+    lift = accuracy_value - baseline
+
+    if accuracy_value >= baseline + 0.15 and f1_value >= baseline:
+        strength = "The classifier is performing meaningfully above the majority-class baseline."
+    elif accuracy_value >= baseline:
+        strength = "The classifier is slightly above baseline; treat the result as exploratory."
+    else:
+        strength = "The classifier is not beating the majority-class baseline yet."
+
+    cm = confusion_matrix(y_true, y_pred)
+    labels = sorted(list(set(y_true)), key=str)
+    confusion_note = "No off-diagonal class confusion was observed."
+    if cm.shape[0] > 1:
+        off_diag = cm.copy()
+        np.fill_diagonal(off_diag, 0)
+        if off_diag.max() > 0:
+            row_idx, col_idx = np.unravel_index(off_diag.argmax(), off_diag.shape)
+            confusion_note = (
+                f"Most common confusion: true class {labels[row_idx]} predicted as {labels[col_idx]} "
+                f"({off_diag[row_idx, col_idx]} samples)."
+            )
+
+    return {
+        "baseline": baseline,
+        "lift": lift,
+        "strength": strength,
+        "confusion_note": confusion_note,
+    }
+
+
 def render_workflow_dashboard():
     data_ready = st.session_state.get("data_ready", False)
     map_ready = st.session_state.get("map_initialised", False)
@@ -393,6 +437,28 @@ st.sidebar.header("2. Model Settings")
 svm_c = st.sidebar.number_input("Regularization (C)", value=1.0)
 k_folds = st.sidebar.slider("CV Folds", 2, 10, 5)
 
+encoding_signature = {"delta_threshold": threshold_val}
+simulation_signature = {
+    "reservoir_c": res_c,
+    "reservoir_l": res_l,
+    "stdp_a_pos": stdp_pos,
+    "stdp_a_neg": stdp_neg,
+    "membrane_threshold": mem_thr_val,
+}
+
+if st.session_state.get("data_ready") and st.session_state.get("encoding_signature") != encoding_signature:
+    clear_dataset_state()
+    st.session_state["workflow_notice"] = "Delta threshold changed, so the encoded dataset was reset. Load and encode the data again."
+    st.rerun()
+
+if st.session_state.get("features_ready") and st.session_state.get("simulation_signature") != simulation_signature:
+    clear_derived_state()
+    st.session_state["workflow_notice"] = "NeuCube hyperparameters changed, so the mapping and extracted features were reset. Re-run the simulation."
+    st.rerun()
+
+if st.session_state.get("workflow_notice"):
+    st.warning(st.session_state.pop("workflow_notice"))
+
 # --- SIDEBAR FOOTER ---
 st.sidebar.markdown("---")
 st.sidebar.info(
@@ -413,10 +479,6 @@ def load_builtin_eeg_dataset():
 def encode_dataset(X_raw, thresh):
     encoder = Delta(threshold=thresh)
     return encoder.encode_dataset(X_raw)
-
-def reset_dataset_state():
-    for key in DATASET_STATE_KEYS:
-        st.session_state.pop(key, None)
 
 # ==========================================
 # 3. MAIN EXECUTION FLOW
@@ -529,7 +591,7 @@ if st.button("Load & Encode Data"):
         if err:
             st.error(err)
         else:
-            reset_dataset_state()
+            clear_dataset_state()
             X_encoded = encode_dataset(X_raw, threshold_val)
             st.success("Data loaded and encoded successfully.")
             render_loaded_dataset_summary(X_encoded, y_data, feature_names)
@@ -540,6 +602,8 @@ if st.button("Load & Encode Data"):
             st.session_state['feature_names'] = feature_names
             st.session_state['dataset_name'] = dataset_name
             st.session_state['data_ready'] = True
+            st.session_state['encoding_signature'] = encoding_signature
+            st.session_state['simulation_signature'] = simulation_signature
 
 # Check if data is ready
 if st.session_state.get('data_ready', False):
@@ -584,6 +648,7 @@ if st.session_state.get('data_ready', False):
     """, unsafe_allow_html=True)
     
     if st.button("NeuCube Initialisation & Mapping"):
+        st.session_state['simulation_signature'] = simulation_signature
         st.session_state['map_initialised'] = True
 
     if st.session_state.get('map_initialised', False):
@@ -641,6 +706,7 @@ if st.session_state.get('data_ready', False):
                     
                     st.session_state['snn_features'] = snn_features
                     st.session_state['features_ready'] = True
+                    st.session_state['simulation_signature'] = simulation_signature
                 
                 brain_placeholder.empty()
             
@@ -777,6 +843,16 @@ if st.session_state.get('data_ready', False):
             metric_col_1, metric_col_2 = st.columns(2)
             metric_col_1.metric("Accuracy", f"{final_acc:.2%}")
             metric_col_2.metric("Weighted F1", f"{final_f1:.2%}")
+
+            interpretation = result_interpretation(final_acc, final_f1, y_total2, pred_total2)
+            with st.expander("Result Interpretation", expanded=True):
+                interp_col_1, interp_col_2 = st.columns(2)
+                interp_col_1.metric("Majority-Class Baseline", f"{interpretation['baseline']:.2%}")
+                interp_col_2.metric("Accuracy Lift", f"{interpretation['lift']:.2%}")
+                st.write(interpretation["strength"])
+                st.write(interpretation["confusion_note"])
+                if len(y_total2) < 30:
+                    st.info("Small evaluation set: use these metrics as an early signal, not as a final claim.")
 
             report = classification_report(
                 y_total2,
