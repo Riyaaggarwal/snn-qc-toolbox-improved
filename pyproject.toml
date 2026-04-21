@@ -4,7 +4,7 @@ build-backend = "setuptools.backends.legacy:build"
 
 [project]
 name = "spikesense-studio"
-version = "0.2.0"
+version = "0.3.0"
 description = "Time-series classification with spiking neural networks and optional quantum kernels"
 readme = "README.md"
 license = { text = "Apache-2.0" }
@@ -40,4 +40,4 @@ spikesense = "streamlit run app:main"
 
 [tool.setuptools.packages.find]
 where = ["."]
-include = ["snnqc*", "neucube*"]
+exclude = ["snnqc*", "neucube*", "tests*"]
