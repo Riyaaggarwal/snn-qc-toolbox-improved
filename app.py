@@ -840,69 +840,9 @@ render_hero()
 render_pipeline_tracker()
 
 
-# ══════════════════════════════════════════════════════════════════════════════
-# WORKFLOW TABS
-# ══════════════════════════════════════════════════════════════════════════════
-
-t_data, t_enc, t_sim, t_feat, t_rep = st.tabs(
-    ["  Data  ", "  Prepare  ", "  Analyse  ", "  Features  ", "  Report  "]
-)
-
 data_ready     = st.session_state.get("data_ready",      False)
 map_ready      = st.session_state.get("map_initialised", False)
 features_ready = st.session_state.get("features_ready",  False)
-
-with t_data:
-    st.markdown(
-        status_pill("Ready", data_ready) if data_ready else status_pill("Not loaded", False),
-        unsafe_allow_html=True,
-    )
-    st.write("")
-    if data_ready:
-        X = st.session_state["X"]
-        y = st.session_state["y"]
-        c1, c2, c3, c4 = st.columns(4)
-        c1.metric("Samples",    X.shape[0])
-        c2.metric("Timepoints", X.shape[1])
-        c3.metric("Features",   X.shape[2])
-        c4.metric("Classes",    pd.Series(y).nunique())
-        st.caption(f"Dataset: {st.session_state.get('dataset_name', '—')}")
-    else:
-        st.caption("Load a dataset below to begin.")
-
-with t_enc:
-    st.markdown(status_pill("Encoded", data_ready) if data_ready else status_pill("Waiting", False),
-                unsafe_allow_html=True)
-    st.write("")
-    st.caption(f"Spike sensitivity threshold: **{threshold_val}**")
-    if data_ready:
-        X = st.session_state["X"]
-        spike_density = float(np.count_nonzero(X.numpy()) / X.numel())
-        st.metric("Spike Density", f"{spike_density:.2%}")
-
-with t_sim:
-    label = "Features extracted" if features_ready else ("Engine ready" if map_ready else "Waiting")
-    st.markdown(status_pill(label, features_ready or map_ready), unsafe_allow_html=True)
-    st.write("")
-    c1, c2, c3 = st.columns(3)
-    c1.metric("Connectivity C",     res_c)
-    c2.metric("Distance Scale L",   res_l)
-    c3.metric("Membrane Threshold", mem_thr_val)
-
-with t_feat:
-    st.markdown(status_pill("Ready", features_ready) if features_ready else status_pill("Waiting", False),
-                unsafe_allow_html=True)
-    st.write("")
-    if features_ready:
-        st.write(f"Feature matrix: `{st.session_state['snn_features'].shape}`")
-    else:
-        st.caption("Run Feature Extraction to generate the spiking feature matrix.")
-
-with t_rep:
-    st.markdown(status_pill("Ready", features_ready) if features_ready else status_pill("Waiting", False),
-                unsafe_allow_html=True)
-    st.write("")
-    st.caption("Classical SVM and Logistic Regression support multiclass. Quantum Kernel SVM: binary, 2 features, experimental.")
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -1134,6 +1074,9 @@ if st.session_state.get("data_ready"):
     with st.expander("Dataset Summary", expanded=True):
         st.caption(f"**{st.session_state.get('dataset_name', '—')}**")
         render_loaded_dataset_summary(X, y, feature_names)
+        spike_density = float(np.count_nonzero(X.numpy()) / X.numel())
+        st.metric("Spike Density", f"{spike_density:.2%}",
+                  help="Fraction of spike-encoded values that are 1. Low = sparse encoding (typical). High = threshold may be too low.")
 
     # ── STEP 2: Signal Preview ────────────────────────────────────────────────
     section_header(2, "Signal Preview", "Inspect raw signal values and the generated spike representation.")
