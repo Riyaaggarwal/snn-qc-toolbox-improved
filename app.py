@@ -43,11 +43,13 @@ np.random.seed(SEED)
 random.seed(SEED)
 torch.manual_seed(SEED)
 
-# --- FEATURE NAMES DEFINITION ---
-# The exact order provided by user
-FEATURE_NAMES = [ 
+DEFAULT_FEATURE_NAMES = [
     "AF3*", "F7*", "F3*", "FC5*", "T7*", "P7*", "O1*", 
     "O2*", "P8*", "T8*", "FC6*", "F4*", "F8*", "AF4*"
+]
+DATASET_STATE_KEYS = [
+    "X_raw", "X", "y", "feature_names", "dataset_name", "data_ready",
+    "map_initialised", "features_ready", "snn_features"
 ]
 
 st.title("🧠 SNN-QC: Spiking Neural Network-Quantum Computational Toolbox")
@@ -69,16 +71,7 @@ stdp_pos = st.sidebar.number_input("STDP a_pos", value=0.001, format="%.4f")
 stdp_neg = st.sidebar.number_input("STDP a_neg", value=-0.01, format="%.4f")
 mem_thr_val = st.sidebar.number_input("Membrane Threshold", value=0.01, format="%.3f")
 
-st.sidebar.header("2. Features Selection")
-# UPDATED: Select by Name instead of Index
-feat_name_1 = st.sidebar.selectbox("Feature 1 (Channel)", FEATURE_NAMES, index=0) # Defaults to AF3
-feat_name_2 = st.sidebar.selectbox("Feature 2 (Channel)", FEATURE_NAMES, index=4) # Defaults to T8
-
-# Convert Names to Indices for the Math
-feat_idx_1 = FEATURE_NAMES.index(feat_name_1)
-feat_idx_2 = FEATURE_NAMES.index(feat_name_2)
-
-st.sidebar.header("3. Model Settings")
+st.sidebar.header("2. Model Settings")
 svm_c = st.sidebar.number_input("Regularization (C)", value=1.0)
 k_folds = st.sidebar.slider("CV Folds", 2, 10, 5)
 
@@ -95,13 +88,12 @@ st.sidebar.info(
 # 2. DATA LOADING (Cached)
 # ==========================================
 @st.cache_data
-def load_and_encode_dataset(thresh):
-    """Loads CSVs and returns both RAW and ENCODED tensors"""
+def load_builtin_eeg_dataset():
+    """Loads the bundled EEG demo dataset as a raw tensor."""
     base_path = './example_data/wrist_movement_eeg/'
     
     if not os.path.exists(base_path):
-        # Returns: Raw, Encoded, Labels, Error Message
-        return None, None, None, f"Path not found: {base_path}"
+        return None, None, DEFAULT_FEATURE_NAMES, f"Path not found: {base_path}"
 
     filenameslist = ['sam'+str(idx)+'_eeg.csv' for idx in range(1,61)]
     dfs = []
@@ -111,26 +103,103 @@ def load_and_encode_dataset(thresh):
             full_path = os.path.join(base_path, filename)
             dfs.append(pd.read_csv(full_path, header=None))
     except FileNotFoundError as e:
-        return None, None, None, f"Missing File: {e}"
+        return None, None, DEFAULT_FEATURE_NAMES, f"Missing File: {e}"
 
     fulldf = pd.concat(dfs)
     labels_path = os.path.join(base_path, 'tar_class_labels.csv')
     labels = pd.read_csv(labels_path, header=None)
     y_all = labels.values.flatten()
 
-    # Create Raw Tensor (60 samples, 128 timepoints, 14 channels)
-    X_raw = torch.tensor(fulldf.values.reshape(60, 128, 14))
-    
-    # Create Encoded Tensor
+    X_raw = torch.tensor(fulldf.values.reshape(60, 128, 14), dtype=torch.float32)
+    return X_raw, y_all, DEFAULT_FEATURE_NAMES, None
+
+def encode_dataset(X_raw, thresh):
     encoder = Delta(threshold=thresh)
-    X_encoded = encoder.encode_dataset(X_raw)
-    
-    return X_raw, X_encoded, y_all, None
+    return encoder.encode_dataset(X_raw)
+
+def reset_dataset_state():
+    for key in DATASET_STATE_KEYS:
+        st.session_state.pop(key, None)
+
+def read_uploaded_csv(uploaded_file, has_header):
+    if uploaded_file is None:
+        return None
+    uploaded_file.seek(0)
+    header = 0 if has_header else None
+    return pd.read_csv(uploaded_file, header=header)
+
+def parse_combined_csv(df, sample_col, label_col, time_col, feature_cols):
+    if df is None:
+        return None, None, None, "Upload a combined CSV file first."
+    if not sample_col or not label_col:
+        return None, None, None, "Choose sample and label columns."
+    if not feature_cols:
+        return None, None, None, "Choose at least one feature column."
+
+    working = df.copy()
+    if time_col and time_col != "(none)":
+        working = working.sort_values([sample_col, time_col])
+    else:
+        working = working.sort_values(sample_col)
+
+    samples = []
+    labels = []
+    expected_timepoints = None
+
+    for _, group in working.groupby(sample_col, sort=False):
+        feature_values = group[feature_cols].apply(pd.to_numeric, errors="coerce")
+        if feature_values.isna().any().any():
+            return None, None, None, "Feature columns must be numeric and cannot contain blank values."
+        if expected_timepoints is None:
+            expected_timepoints = len(feature_values)
+        elif len(feature_values) != expected_timepoints:
+            return None, None, None, "Every sample must have the same number of timepoints."
+
+        samples.append(feature_values.to_numpy(dtype=np.float32))
+        labels.append(group[label_col].iloc[0])
+
+    if len(samples) < 2:
+        return None, None, None, "At least two samples are required."
+
+    X_raw = torch.tensor(np.stack(samples), dtype=torch.float32)
+    return X_raw, np.array(labels), list(feature_cols), None
+
+def parse_sample_csvs(sample_files, labels_df, has_header):
+    if not sample_files:
+        return None, None, None, "Upload at least two sample CSV files."
+    if labels_df is None:
+        return None, None, None, "Upload a labels CSV file."
+
+    sorted_files = sorted(sample_files, key=lambda file_obj: file_obj.name)
+    labels = labels_df.iloc[:, -1].values
+    if len(labels) != len(sorted_files):
+        return None, None, None, "The labels CSV must contain exactly one label per sample file."
+
+    samples = []
+    feature_names = None
+    expected_shape = None
+    header = 0 if has_header else None
+
+    for uploaded_file in sorted_files:
+        uploaded_file.seek(0)
+        df = pd.read_csv(uploaded_file, header=header)
+        values = df.apply(pd.to_numeric, errors="coerce")
+        if values.isna().any().any():
+            return None, None, None, f"{uploaded_file.name} contains non-numeric or blank feature values."
+        if expected_shape is None:
+            expected_shape = values.shape
+            feature_names = [str(col) for col in values.columns]
+        elif values.shape != expected_shape:
+            return None, None, None, "All sample CSV files must have the same rows x features shape."
+        samples.append(values.to_numpy(dtype=np.float32))
+
+    X_raw = torch.tensor(np.stack(samples), dtype=torch.float32)
+    return X_raw, labels, feature_names, None
 
 def load_sensor_locations():
     """
     Uses eeg_mapping to find the specific XYZ coordinates.
-    STRICTLY enforces 14 points to match FEATURE_NAMES.
+    STRICTLY enforces 14 points to match the default EEG feature list.
     """
     base_path = './example_data/wrist_movement_eeg/'
     coord_path = os.path.join(base_path, 'brain_coordinates.csv')
@@ -164,20 +233,96 @@ st.markdown("""
     <h2 style='font-size: 24px;'> Data Upload & Spike Encoding </h2>
 """, unsafe_allow_html=True)
 
+dataset_source = st.radio(
+    "Dataset Source",
+    ["Built-in EEG demo", "Single combined CSV", "Multiple sample CSVs"],
+    horizontal=True,
+)
+
+combined_df = None
+combined_config = {}
+sample_files = []
+sample_labels_df = None
+sample_has_header = True
+
+if dataset_source == "Built-in EEG demo":
+    st.caption("Uses the bundled wrist movement EEG dataset: 60 trials, 128 timepoints, 14 channels.")
+
+elif dataset_source == "Single combined CSV":
+    st.caption("Expected format: one row per sample-timepoint, with columns for sample ID, label, and numeric features.")
+    combined_file = st.file_uploader("Upload combined CSV", type=["csv"], key="combined_csv")
+    combined_has_header = st.checkbox("Combined CSV has a header row", value=True)
+
+    if combined_file is not None:
+        combined_df = read_uploaded_csv(combined_file, combined_has_header)
+        st.dataframe(combined_df.head(20), use_container_width=True)
+
+        columns = [str(col) for col in combined_df.columns]
+        combined_df.columns = columns
+        default_label_index = len(columns) - 1
+
+        col_cfg_1, col_cfg_2, col_cfg_3 = st.columns(3)
+        with col_cfg_1:
+            sample_col = st.selectbox("Sample ID column", columns)
+        with col_cfg_2:
+            label_col = st.selectbox("Label column", columns, index=default_label_index)
+        with col_cfg_3:
+            time_options = ["(none)"] + columns
+            time_col = st.selectbox("Time/order column", time_options)
+
+        excluded = {sample_col, label_col}
+        if time_col != "(none)":
+            excluded.add(time_col)
+        default_features = [col for col in columns if col not in excluded]
+        feature_cols = st.multiselect("Feature columns", columns, default=default_features)
+        combined_config = {
+            "sample_col": sample_col,
+            "label_col": label_col,
+            "time_col": time_col,
+            "feature_cols": feature_cols,
+        }
+
+elif dataset_source == "Multiple sample CSVs":
+    st.caption("Expected format: each sample CSV is timepoints x features. Labels CSV must contain one label per sample file, in sorted filename order.")
+    sample_has_header = st.checkbox("Sample CSVs have a header row", value=True)
+    sample_files = st.file_uploader("Upload sample CSV files", type=["csv"], accept_multiple_files=True, key="sample_csvs")
+    sample_labels_file = st.file_uploader("Upload labels CSV", type=["csv"], key="sample_labels_csv")
+    labels_has_header = st.checkbox("Labels CSV has a header row", value=False)
+
+    if sample_files:
+        sorted_names = [file_obj.name for file_obj in sorted(sample_files, key=lambda file_obj: file_obj.name)]
+        st.write("Sample order used for labels:", ", ".join(sorted_names[:10]) + (" ..." if len(sorted_names) > 10 else ""))
+    if sample_labels_file is not None:
+        sample_labels_df = read_uploaded_csv(sample_labels_file, labels_has_header)
+        st.dataframe(sample_labels_df.head(20), use_container_width=True)
 
 if st.button("Load & Encode Data"):
     with st.spinner(f"Loading files and applying Delta Encoding (Thresh={threshold_val})..."):
-        X_raw, X_encoded, y_data, err = load_and_encode_dataset(threshold_val)
+        if dataset_source == "Built-in EEG demo":
+            X_raw, y_data, feature_names, err = load_builtin_eeg_dataset()
+            dataset_name = "Built-in EEG demo"
+        elif dataset_source == "Single combined CSV":
+            X_raw, y_data, feature_names, err = parse_combined_csv(
+                combined_df,
+                combined_config.get("sample_col"),
+                combined_config.get("label_col"),
+                combined_config.get("time_col"),
+                combined_config.get("feature_cols", []),
+            )
+            dataset_name = "Uploaded combined CSV"
+        else:
+            X_raw, y_data, feature_names, err = parse_sample_csvs(sample_files, sample_labels_df, sample_has_header)
+            dataset_name = "Uploaded sample CSVs"
         
         if err:
             st.error(err)
         else:
+            reset_dataset_state()
+            X_encoded = encode_dataset(X_raw, threshold_val)
             st.success(f"Data Loaded Successfully!")
             
-            col1, col2 = st.columns(2)
+            col1, col2, col3 = st.columns(3)
             
-            # --- CUSTOM FONT SIZE METRICS ---
-            # using HTML to control the size (e.g., 20px is smaller than the default metric)
             with col1:
                 st.markdown(f"""
                 <div style="background-color: #262730; padding: 10px; border-radius: 5px;">
@@ -193,18 +338,20 @@ if st.button("Load & Encode Data"):
                     <p style="margin:0; font-size: 20px; font-weight: bold; color: white;">{len(y_data)}</p>
                 </div>
                 """, unsafe_allow_html=True)
-            # --------------------------------
+
+            with col3:
+                st.markdown(f"""
+                <div style="background-color: #262730; padding: 10px; border-radius: 5px;">
+                    <p style="margin:0; font-size: 20px; color: #9da3a8;">Features</p>
+                    <p style="margin:0; font-size: 20px; font-weight: bold; color: white;">{len(feature_names)}</p>
+                </div>
+                """, unsafe_allow_html=True)
             
-            # Save to session state
             st.session_state['X_raw'] = X_raw
             st.session_state['X'] = X_encoded 
             st.session_state['y'] = y_data
-            st.session_state['data_ready'] = True
-            
-            # Save RAW and ENCODED to session state
-            st.session_state['X_raw'] = X_raw
-            st.session_state['X'] = X_encoded 
-            st.session_state['y'] = y_data
+            st.session_state['feature_names'] = feature_names
+            st.session_state['dataset_name'] = dataset_name
             st.session_state['data_ready'] = True
 
 # Check if data is ready
@@ -212,6 +359,20 @@ if st.session_state.get('data_ready', False):
     X_raw = st.session_state['X_raw']
     X = st.session_state['X']
     y = st.session_state['y']
+    feature_names = st.session_state.get('feature_names', [f"Feature {idx + 1}" for idx in range(X.shape[2])])
+
+    st.sidebar.header("3. Features Selection")
+    feat_name_1 = st.sidebar.selectbox("Feature 1 (Channel)", feature_names, index=0)
+    feat_2_default = min(4, len(feature_names) - 1)
+    feat_name_2 = st.sidebar.selectbox("Feature 2 (Channel)", feature_names, index=feat_2_default)
+    feat_idx_1 = feature_names.index(feat_name_1)
+    feat_idx_2 = feature_names.index(feat_name_2)
+
+    with st.expander("Dataset Summary", expanded=True):
+        st.write(f"**Dataset:** {st.session_state.get('dataset_name', 'Loaded dataset')}")
+        st.write(f"**Samples x Timepoints x Features:** {tuple(X.shape)}")
+        st.write(f"**Classes:** {', '.join(map(str, sorted(pd.Series(y).dropna().unique())))}")
+        st.write(f"**Feature names:** {', '.join(map(str, feature_names))}")
     
         # --- UPDATED: VISUALIZATION SECTION ---
     with st.expander("Raw Signals & Spikes", expanded=True):
@@ -226,10 +387,10 @@ if st.session_state.get('data_ready', False):
             
         with col_viz_2:
             # 2. Select Feature (Channel) - THIS IS THE NEW DROP DOWN
-            sel_channel = st.selectbox("Select Feature (Channel)", FEATURE_NAMES, index=0, key="viz_chan_sel")
+            sel_channel = st.selectbox("Select Feature (Channel)", feature_names, index=0, key="viz_chan_sel")
         
         # Convert the selected Name (e.g., "T7") to Index (e.g., 4)
-        ch_idx_viz = FEATURE_NAMES.index(sel_channel)
+        ch_idx_viz = feature_names.index(sel_channel)
         
         # --- PREPARE DATA FOR PLOTTING ---
         # Raw Data (Continuous values)
@@ -305,17 +466,28 @@ if st.session_state.get('data_ready', False):
 
         plot_coords = []
         plot_names = []
+        eeg_matches = 0
         
-        for raw_name in FEATURE_NAMES:
+        for raw_name in feature_names:
             clean_name = raw_name.replace('*', '') 
             if clean_name in STANDARD_10_20:
                 plot_coords.append(STANDARD_10_20[clean_name])
                 plot_names.append(raw_name)
+                eeg_matches += 1
             else:
                 plot_coords.append([0,0,0])
                 plot_names.append(raw_name)
                 
         plot_coords = np.array(plot_coords)
+        use_eeg_template = eeg_matches > 0
+
+        if not use_eeg_template:
+            angles = np.linspace(0, 2 * np.pi, len(feature_names), endpoint=False)
+            plot_coords = np.column_stack([
+                70 * np.cos(angles),
+                70 * np.sin(angles),
+                np.zeros(len(feature_names)),
+            ])
 
         # --- VIEW CONTROL ---
         with st.expander("Schematic Brain Template", expanded=True):
@@ -338,18 +510,19 @@ if st.session_state.get('data_ready', False):
             ))
 
             # Ghost Head Model
-            phi = np.linspace(0, 2*np.pi, 20)
-            theta = np.linspace(0, np.pi, 10)
-            phi, theta = np.meshgrid(phi, theta)
-            r = 90 
-            x_sphere = r * np.sin(theta) * np.cos(phi)
-            y_sphere = r * np.sin(theta) * np.sin(phi)
-            z_sphere = r * np.cos(theta) - 10 
-        
-            fig_3d.add_trace(go.Mesh3d(
-                x=x_sphere.flatten(), y=y_sphere.flatten(), z=z_sphere.flatten(),
-                color='gray', opacity=0.2, name='Head Model', alphahull=0 
-            ))
+            if use_eeg_template:
+                phi = np.linspace(0, 2*np.pi, 20)
+                theta = np.linspace(0, np.pi, 10)
+                phi, theta = np.meshgrid(phi, theta)
+                r = 90 
+                x_sphere = r * np.sin(theta) * np.cos(phi)
+                y_sphere = r * np.sin(theta) * np.sin(phi)
+                z_sphere = r * np.cos(theta) - 10 
+            
+                fig_3d.add_trace(go.Mesh3d(
+                    x=x_sphere.flatten(), y=y_sphere.flatten(), z=z_sphere.flatten(),
+                    color='gray', opacity=0.2, name='Head Model', alphahull=0 
+                ))
 
             # Layout Logic
             if clean_view:
@@ -360,7 +533,7 @@ if st.session_state.get('data_ready', False):
                 axis_range = None
 
             fig_3d.update_layout(
-                title="Schematic Head Model Visualisation",
+                title="Schematic Head Model Visualisation" if use_eeg_template else "Generic Feature Layout",
                 scene=dict(
                     xaxis=dict(range=axis_range, showgrid=grid_status, zeroline=grid_status, showticklabels=grid_status, title='X' if grid_status else ''),
                     yaxis=dict(range=axis_range, showgrid=grid_status, zeroline=grid_status, showticklabels=grid_status, title='Y' if grid_status else ''),
@@ -475,7 +648,19 @@ if st.session_state.get('data_ready', False):
         """, unsafe_allow_html=True)
         
         # 1. Prepare Data
-        class_mask = np.isin(y, [1, 2])
+        available_classes = sorted(pd.Series(y).dropna().unique(), key=str)
+        default_class_selection = available_classes[:2]
+        selected_classes = st.multiselect(
+            "Classes for binary quantum classification",
+            available_classes,
+            default=default_class_selection,
+        )
+
+        if len(selected_classes) != 2:
+            st.warning("Choose exactly two classes to run the current 2-feature quantum kernel classifier.")
+            st.stop()
+
+        class_mask = np.isin(y, selected_classes)
         binary_class = snn_features[class_mask]
         y_final = y[class_mask]
         
