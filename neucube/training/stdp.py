@@ -67,32 +67,3 @@ class STDP():
         Hook for performing reset tasks.
         """
         pass
-
-
-# Main script to test STDP
-if __name__ == "__main__":
-    # Simulated spike activity: (3 trials, 128 time points, 14 features)
-    spike_activity = torch.randint(0, 2, (3, 128, 14)).float()
-
-    # Initialize weights (randomized for simplicity)
-    w_latent = torch.randn(14, 14)
-
-    # Simulated time since last spike
-    aux = torch.randint(0, 10, (14, 14)).float()
-
-    # Instantiate STDP
-    stdp = STDP(a_pos=0.0001, a_neg=-0.01, t_constant=3)
-
-    # Simulate training on spike activity
-    for trial in range(spike_activity.shape[0]):  # Iterate over trials
-        for time_step in range(spike_activity.shape[1]):  # Iterate over time points
-            spike_latent = spike_activity[trial, time_step]  # Spikes at this time step
-            pre_updates, pos_updates = stdp.train(aux, w_latent, spike_latent)
-
-            # Update weights
-            w_latent += pre_updates + pos_updates
-
-    # Print final feature vectors (weights after training)
-    print("\nFinal Feature Vectors (Post-training Weights):")
-    print(w_latent.shape)
-    print(w_latent)

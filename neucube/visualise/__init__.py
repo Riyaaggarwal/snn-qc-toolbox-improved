@@ -1,1 +1,0 @@
-from .visualise import spike_raster, plot_connections
