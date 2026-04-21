@@ -8,6 +8,7 @@ import pennylane as qml
 import random
 import plotly.graph_objects as go
 import base64
+import json
 
 from snnqc.data_loader import (
     combined_csv_template,
@@ -144,6 +145,120 @@ def render_help_page():
         )
 
 
+def render_workflow_dashboard():
+    data_ready = st.session_state.get("data_ready", False)
+    map_ready = st.session_state.get("map_initialised", False)
+    features_ready = st.session_state.get("features_ready", False)
+
+    if not data_ready:
+        next_step = "Load a built-in or uploaded dataset."
+    elif not map_ready:
+        next_step = "Inspect encoded signals, then initialise the NeuCube mapping."
+    elif not features_ready:
+        next_step = "Run the NeuCube simulation to extract SNN features."
+    else:
+        next_step = "Run classification and export the metrics/features."
+
+    st.info(f"Next step: {next_step}")
+
+    tab_data, tab_encoding, tab_simulation, tab_features, tab_results = st.tabs(
+        ["Data", "Encoding", "Simulation", "Features", "Results"]
+    )
+
+    with tab_data:
+        status = "Ready" if data_ready else "Not loaded"
+        st.metric("Dataset", status)
+        if data_ready:
+            X = st.session_state["X"]
+            y = st.session_state["y"]
+            feature_names = st.session_state["feature_names"]
+            col_a, col_b, col_c, col_d = st.columns(4)
+            col_a.metric("Samples", X.shape[0])
+            col_b.metric("Timepoints", X.shape[1])
+            col_c.metric("Features", X.shape[2])
+            col_d.metric("Classes", pd.Series(y).nunique())
+            st.caption(f"Loaded dataset: {st.session_state.get('dataset_name', 'Loaded dataset')}")
+            st.caption(f"First features: {', '.join(map(str, feature_names[:8]))}")
+        else:
+            st.caption("Start below by choosing a dataset source and loading data.")
+
+    with tab_encoding:
+        status = "Encoded" if data_ready else "Waiting for data"
+        st.metric("Spike Encoding", status)
+        st.caption(f"Current Delta threshold: {threshold_val}")
+        if data_ready:
+            X = st.session_state["X"]
+            spike_density = float(np.count_nonzero(X.numpy()) / X.numel())
+            st.metric("Spike Density", f"{spike_density:.2%}")
+        else:
+            st.caption("Encoding preview appears after data loading.")
+
+    with tab_simulation:
+        status = "Features extracted" if features_ready else "Mapping ready" if map_ready else "Waiting"
+        st.metric("NeuCube Simulation", status)
+        col_a, col_b, col_c = st.columns(3)
+        col_a.metric("Reservoir C", res_c)
+        col_b.metric("Reservoir L", res_l)
+        col_c.metric("Membrane Threshold", mem_thr_val)
+
+    with tab_features:
+        status = "Ready" if features_ready else "Not available"
+        st.metric("SNN Features", status)
+        if features_ready:
+            st.write(f"Extracted feature matrix: `{st.session_state['snn_features'].shape}`")
+            st.caption("Use the Features section below to download the extracted feature table.")
+        else:
+            st.caption("Run the NeuCube simulation to generate features.")
+
+    with tab_results:
+        status = "Ready to classify" if features_ready else "Waiting for features"
+        st.metric("Classification", status)
+        st.caption("Classical classifiers support multiclass use. Quantum Kernel SVM is currently binary and two-feature.")
+        if data_ready:
+            st.download_button(
+                "Download Experiment Config",
+                json.dumps(current_experiment_config(), indent=2).encode("utf-8"),
+                file_name="snnqc_experiment_config.json",
+                mime="application/json",
+            )
+
+
+def current_experiment_config():
+    config = {
+        "app": "SNN-QC Workbench",
+        "dataset": st.session_state.get("dataset_name"),
+        "data_ready": st.session_state.get("data_ready", False),
+        "map_initialised": st.session_state.get("map_initialised", False),
+        "features_ready": st.session_state.get("features_ready", False),
+        "hyperparameters": {
+            "delta_threshold": threshold_val,
+            "reservoir_c": res_c,
+            "reservoir_l": res_l,
+            "stdp_a_pos": stdp_pos,
+            "stdp_a_neg": stdp_neg,
+            "membrane_threshold": mem_thr_val,
+            "svm_c": svm_c,
+            "cv_folds": k_folds,
+        },
+    }
+
+    if st.session_state.get("data_ready", False):
+        X = st.session_state["X"]
+        y = st.session_state["y"]
+        config["data"] = {
+            "shape": list(X.shape),
+            "classes": [str(value) for value in sorted(pd.Series(y).dropna().unique(), key=str)],
+            "feature_names": [str(value) for value in st.session_state.get("feature_names", [])],
+        }
+
+    if st.session_state.get("features_ready", False):
+        config["snn_features"] = {
+            "shape": list(st.session_state["snn_features"].shape),
+        }
+
+    return config
+
+
 page = st.sidebar.radio("Page", ["Workbench", "Help & App Info"])
 if page == "Help & App Info":
     render_help_page()
@@ -173,6 +288,8 @@ st.sidebar.info(
     "Developed by: **Ravi Kumar Jha**\n\n"
     "Contact: Jha-R@ulster.ac.uk"
 )
+
+render_workflow_dashboard()
 
 # ==========================================
 # 2. DATA LOADING (Cached)
