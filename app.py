@@ -693,6 +693,24 @@ with st.sidebar.expander("Advanced engine settings"):
     mem_thr_val = st.number_input(
         "Membrane threshold", value=float(_defaults.get("membrane_threshold", 0.01)), format="%.3f",
     )
+    reservoir_size = st.select_slider(
+        "Reservoir size",
+        options=["Fast (5×5×5)", "Standard (7×7×7)", "Full (10×10×10)"],
+        value=_defaults.get("reservoir_size", "Standard (7×7×7)"),
+        help="Larger = better features but slower. Fast ≈30s, Standard ≈90s, Full ≈3–5min on cloud.",
+    )
+
+_CUBE_SHAPES = {
+    "Fast (5×5×5)":    (5, 5, 5),
+    "Standard (7×7×7)":(7, 7, 7),
+    "Full (10×10×10)": (10,10,10),
+}
+_CUBE_TIMES = {
+    "Fast (5×5×5)":    "~30 seconds",
+    "Standard (7×7×7)":"~90 seconds",
+    "Full (10×10×10)": "~3–5 minutes",
+}
+cube_shape = _CUBE_SHAPES[reservoir_size]
 
 with st.sidebar.expander("Reproducibility"):
     seed_val = int(st.number_input(
@@ -711,7 +729,7 @@ encoding_signature   = {"delta_threshold": threshold_val}
 simulation_signature = {
     "reservoir_c": res_c, "reservoir_l": res_l,
     "stdp_a_pos": stdp_pos, "stdp_a_neg": stdp_neg,
-    "membrane_threshold": mem_thr_val,
+    "membrane_threshold": mem_thr_val, "cube_shape": cube_shape,
 }
 
 if st.session_state.get("data_ready") and \
@@ -1014,6 +1032,12 @@ if st.session_state.get("data_ready"):
 
         st.divider()
 
+        n_neurons = cube_shape[0] * cube_shape[1] * cube_shape[2]
+        st.caption(
+            f"Reservoir: **{reservoir_size}** — {n_neurons} neurons — "
+            f"estimated time on cloud: **{_CUBE_TIMES[reservoir_size]}**"
+        )
+
         c1, c2 = st.columns([1, 3])
         run_sim = c1.button("Run Feature Extraction", type="primary")
 
@@ -1031,8 +1055,8 @@ if st.session_state.get("data_ready"):
                 else:
                     brain_ph.info("Simulation running…")
 
-            with st.spinner("Simulating NeuCube reservoir and extracting spiking features…"):
-                res           = Reservoir(inputs=X.shape[2], c=res_c, l=res_l)
+            with st.spinner(f"Simulating reservoir ({n_neurons} neurons × {X.shape[0]} samples)… {_CUBE_TIMES[reservoir_size]}"):
+                res           = Reservoir(cube_shape=cube_shape, inputs=X.shape[2], c=res_c, l=res_l)
                 learning_rule = STDP(a_pos=stdp_pos, a_neg=stdp_neg)
                 sam           = SpikeCount()
 
@@ -1225,7 +1249,7 @@ if st.session_state.get("data_ready"):
                 ax_cm.set_ylabel("True",      fontsize=7, color="#64748B")
                 ax_cm.tick_params(labelsize=7, colors="#94A3B8")
                 for spine in ax_cm.spines.values():
-                    spine.set_edgecolor("rgba(148,163,184,0.1)")
+                    spine.set_edgecolor((148/255, 163/255, 184/255, 0.15))
                 st.pyplot(fig_cm)
                 plt.close(fig_cm)
 
