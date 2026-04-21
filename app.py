@@ -3,7 +3,6 @@ import torch
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
-import os
 import pennylane as qml
 import random
 import plotly.graph_objects as go
@@ -56,12 +55,40 @@ DATASET_STATE_KEYS = [
     "map_initialised", "features_ready", "snn_features"
 ]
 
-st.title("🧠 SNN-QC: Spiking Neural Network-Quantum Computational Toolbox")
-st.markdown("""
-    <div style='text-align: center; color: #1E90FF; font-size: 18px; font-weight: bold;'>
-        [Pipeline: Data Upload & Spike Encoding &rarr; NeuCube Spatio-temporal Learning &rarr; Spiking Feature Extraction &rarr; Quantum Kernel Classification]
+st.markdown(
+    """
+    <style>
+        .block-container { padding-top: 2rem; }
+        .snnqc-hero {
+            border: 1px solid rgba(49, 51, 63, 0.18);
+            border-radius: 8px;
+            padding: 1.25rem 1.5rem;
+            margin-bottom: 1rem;
+            background: linear-gradient(180deg, rgba(248, 250, 252, 0.95), rgba(241, 245, 249, 0.78));
+        }
+        .snnqc-hero h1 {
+            font-size: 2rem;
+            line-height: 1.15;
+            margin: 0 0 0.35rem 0;
+            letter-spacing: 0;
+        }
+        .snnqc-hero p {
+            color: #475569;
+            font-size: 1rem;
+            margin: 0;
+        }
+        .snnqc-stage-note {
+            color: #64748b;
+            font-size: 0.92rem;
+        }
+    </style>
+    <div class="snnqc-hero">
+        <h1>SNN-QC Workbench</h1>
+        <p>Upload labelled time-series data, extract NeuCube-inspired spiking features, and compare classical and quantum classifiers.</p>
     </div>
-    """, unsafe_allow_html=True)
+    """,
+    unsafe_allow_html=True,
+)
 
 
 def render_help_page():
@@ -71,8 +98,8 @@ def render_help_page():
         "NeuCube-style reservoir dynamics, spiking feature extraction, and classical or quantum classifiers."
     )
 
-    tab_overview, tab_data, tab_pipeline, tab_results = st.tabs(
-        ["Overview", "Data Formats", "Pipeline", "Results"]
+    tab_overview, tab_data, tab_pipeline, tab_results, tab_about = st.tabs(
+        ["Overview", "Data Formats", "Pipeline", "Results", "About"]
     )
 
     with tab_overview:
@@ -143,6 +170,83 @@ def render_help_page():
             - Exported SNN features can be reused in notebooks or other modelling tools.
             """
         )
+
+    with tab_about:
+        st.markdown(
+            """
+            ### Data and materials
+            The EEG dataset and NeuCube software environment are made available from Auckland
+            University of Technology at https://kedri.aut.ac.nz/neucube.
+
+            ### References
+            1. Jha, R. K., Kasabov, N., Bhattacharyya, S., Coyle, D., & Prasad, G. (2025).
+               A hybrid spiking neural network-quantum framework for spatio-temporal data classification:
+               a case study on EEG data. EPJ Quantum Technology, 12(1), 1-23.
+               https://doi.org/10.1140/epjqt/s40507-025-00443-1
+
+            2. Kasabov, N. (2014). NeuCube: A spiking neural network architecture for mapping,
+               learning and understanding of spatio-temporal brain data. Neural Networks, 52, 62-76.
+               https://doi.org/10.1016/j.neunet.2014.01.006
+
+            ### Product direction
+            This workbench is being shaped into a reusable research product: clear data onboarding,
+            reproducible configuration export, interpretable metrics, and downloadable feature tables.
+            """
+        )
+
+
+def render_csv_templates():
+    with st.expander("CSV Templates"):
+        template_col_1, template_col_2, template_col_3 = st.columns(3)
+        with template_col_1:
+            st.download_button(
+                "Combined CSV template",
+                dataframe_to_csv_bytes(combined_csv_template()),
+                file_name="snnqc_combined_template.csv",
+                mime="text/csv",
+            )
+        with template_col_2:
+            st.download_button(
+                "Sample CSV template",
+                dataframe_to_csv_bytes(sample_csv_template()),
+                file_name="snnqc_sample_template.csv",
+                mime="text/csv",
+            )
+        with template_col_3:
+            st.download_button(
+                "Labels CSV template",
+                dataframe_to_csv_bytes(labels_csv_template()),
+                file_name="snnqc_labels_template.csv",
+                mime="text/csv",
+            )
+
+
+def render_dataset_preview(X_raw, y_data, feature_names):
+    preview = dataset_summary(X_raw, y_data, feature_names)
+    metric_1, metric_2, metric_3 = st.columns(3)
+    metric_1.metric("Samples", preview["samples"])
+    metric_2.metric("Timepoints", preview["timepoints"])
+    metric_3.metric("Features", preview["features"])
+    st.write("Class balance")
+    st.dataframe(
+        preview["class_counts"].rename("count").reset_index().rename(columns={"index": "class"}),
+        use_container_width=True,
+    )
+
+
+def render_loaded_dataset_summary(X, y, feature_names):
+    summary = dataset_summary(X, y, feature_names)
+    col1, col2, col3, col4 = st.columns(4)
+    col1.metric("Samples", summary["samples"])
+    col2.metric("Timepoints", summary["timepoints"])
+    col3.metric("Features", summary["features"])
+    col4.metric("Classes", len(summary["class_counts"]))
+    st.dataframe(
+        summary["class_counts"].rename("count").reset_index().rename(columns={"index": "class"}),
+        use_container_width=True,
+    )
+    with st.expander("Feature Names"):
+        st.write(", ".join(map(str, feature_names)))
 
 
 def render_workflow_dashboard():
@@ -283,10 +387,8 @@ k_folds = st.sidebar.slider("CV Folds", 2, 10, 5)
 # --- SIDEBAR FOOTER ---
 st.sidebar.markdown("---")
 st.sidebar.info(
-    "**© 2025 Intelligent Systems Research Centre**\n\n"
-    "*Ulster University*\n\n"
-    "Developed by: **Ravi Kumar Jha**\n\n"
-    "Contact: Jha-R@ulster.ac.uk"
+    "**SNN-QC Workbench**\n\n"
+    "Reusable spiking-feature classification for labelled time-series datasets."
 )
 
 render_workflow_dashboard()
@@ -306,41 +408,12 @@ def reset_dataset_state():
     for key in DATASET_STATE_KEYS:
         st.session_state.pop(key, None)
 
-def load_sensor_locations():
-    """
-    Uses eeg_mapping to find the specific XYZ coordinates.
-    STRICTLY enforces 14 points to match the default EEG feature list.
-    """
-    base_path = './example_data/wrist_movement_eeg/'
-    coord_path = os.path.join(base_path, 'brain_coordinates.csv')
-    map_path = os.path.join(base_path, 'eeg_mapping.csv')
-    
-    if os.path.exists(coord_path) and os.path.exists(map_path):
-        # 1. Load all reservoir coordinates (e.g., 1471 points)
-        all_coords = pd.read_csv(coord_path, header=None).values
-        
-        # 2. Load the mapping indices
-        mapping_indices = pd.read_csv(map_path, header=None).values.flatten().astype(int)
-        
-        # --- FIX 1: FORCE EXACTLY 14 INDICES ---
-        # If the file has 15, we take the first 14. 
-        # If the file has 14, this does nothing (safe).
-        if len(mapping_indices) > 14:
-            mapping_indices = mapping_indices[:14]
-            
-        # 3. Select the rows
-        channel_coords = all_coords[mapping_indices]
-        
-        return channel_coords
-    else:
-        return None
-
 # ==========================================
 # 3. MAIN EXECUTION FLOW
 # ==========================================
 
 st.markdown("""
-    <h2 style='font-size: 24px;'> Data Upload & Spike Encoding </h2>
+    <h2 style='font-size: 24px;'> Data Setup </h2>
 """, unsafe_allow_html=True)
 
 dataset_source = st.radio(
@@ -349,29 +422,7 @@ dataset_source = st.radio(
     horizontal=True,
 )
 
-with st.expander("CSV Templates"):
-    template_col_1, template_col_2, template_col_3 = st.columns(3)
-    with template_col_1:
-        st.download_button(
-            "Combined CSV template",
-            dataframe_to_csv_bytes(combined_csv_template()),
-            file_name="snnqc_combined_template.csv",
-            mime="text/csv",
-        )
-    with template_col_2:
-        st.download_button(
-            "Sample CSV template",
-            dataframe_to_csv_bytes(sample_csv_template()),
-            file_name="snnqc_sample_template.csv",
-            mime="text/csv",
-        )
-    with template_col_3:
-        st.download_button(
-            "Labels CSV template",
-            dataframe_to_csv_bytes(labels_csv_template()),
-            file_name="snnqc_labels_template.csv",
-            mime="text/csv",
-        )
+render_csv_templates()
 
 combined_df = None
 combined_config = {}
@@ -422,16 +473,7 @@ elif dataset_source == "Single combined CSV":
         if preview_err:
             st.warning(preview_err)
         else:
-            preview = dataset_summary(preview_X, preview_y, preview_features)
-            metric_1, metric_2, metric_3 = st.columns(3)
-            metric_1.metric("Samples", preview["samples"])
-            metric_2.metric("Timepoints", preview["timepoints"])
-            metric_3.metric("Features", preview["features"])
-            st.write("Class balance")
-            st.dataframe(
-                preview["class_counts"].rename("count").reset_index().rename(columns={"index": "class"}),
-                use_container_width=True,
-            )
+            render_dataset_preview(preview_X, preview_y, preview_features)
 
 elif dataset_source == "Multiple sample CSVs":
     st.caption("Expected format: each sample CSV is timepoints x features. Labels CSV must contain one label per sample file, in sorted filename order.")
@@ -454,16 +496,7 @@ elif dataset_source == "Multiple sample CSVs":
         if preview_err:
             st.warning(preview_err)
         else:
-            preview = dataset_summary(preview_X, preview_y, preview_features)
-            metric_1, metric_2, metric_3 = st.columns(3)
-            metric_1.metric("Samples", preview["samples"])
-            metric_2.metric("Timepoints", preview["timepoints"])
-            metric_3.metric("Features", preview["features"])
-            st.write("Class balance")
-            st.dataframe(
-                preview["class_counts"].rename("count").reset_index().rename(columns={"index": "class"}),
-                use_container_width=True,
-            )
+            render_dataset_preview(preview_X, preview_y, preview_features)
 
 if st.button("Load & Encode Data"):
     with st.spinner(f"Loading files and applying Delta Encoding (Thresh={threshold_val})..."):
@@ -488,33 +521,8 @@ if st.button("Load & Encode Data"):
         else:
             reset_dataset_state()
             X_encoded = encode_dataset(X_raw, threshold_val)
-            st.success(f"Data Loaded Successfully!")
-            
-            col1, col2, col3 = st.columns(3)
-            
-            with col1:
-                st.markdown(f"""
-                <div style="background-color: #262730; padding: 10px; border-radius: 5px;">
-                    <p style="margin:0; font-size: 20px; color: #9da3a8;">Input Shape</p>
-                    <p style="margin:0; font-size: 20px; font-weight: bold; color: white;">{X_encoded.shape}</p>
-                </div>
-                """, unsafe_allow_html=True)
-                
-            with col2:
-                st.markdown(f"""
-                <div style="background-color: #262730; padding: 10px; border-radius: 5px;">
-                    <p style="margin:0; font-size: 20px; color: #9da3a8;">Total Labels</p>
-                    <p style="margin:0; font-size: 20px; font-weight: bold; color: white;">{len(y_data)}</p>
-                </div>
-                """, unsafe_allow_html=True)
-
-            with col3:
-                st.markdown(f"""
-                <div style="background-color: #262730; padding: 10px; border-radius: 5px;">
-                    <p style="margin:0; font-size: 20px; color: #9da3a8;">Features</p>
-                    <p style="margin:0; font-size: 20px; font-weight: bold; color: white;">{len(feature_names)}</p>
-                </div>
-                """, unsafe_allow_html=True)
+            st.success("Data loaded and encoded successfully.")
+            render_loaded_dataset_summary(X_encoded, y_data, feature_names)
             
             st.session_state['X_raw'] = X_raw
             st.session_state['X'] = X_encoded 
@@ -539,90 +547,61 @@ if st.session_state.get('data_ready', False):
 
     with st.expander("Dataset Summary", expanded=True):
         st.write(f"**Dataset:** {st.session_state.get('dataset_name', 'Loaded dataset')}")
-        st.write(f"**Samples x Timepoints x Features:** {tuple(X.shape)}")
-        st.write(f"**Classes:** {', '.join(map(str, sorted(pd.Series(y).dropna().unique())))}")
-        st.write(f"**Feature names:** {', '.join(map(str, feature_names))}")
+        render_loaded_dataset_summary(X, y, feature_names)
     
-        # --- UPDATED: VISUALIZATION SECTION ---
     with st.expander("Raw Signals & Spikes", expanded=True):
         st.caption("Encode Spikes")
         
-        # --- SELECTORS ---
         col_viz_1, col_viz_2 = st.columns(2)
         
         with col_viz_1:
-            # 1. Select Sample
             sel_sample = st.slider("Select Trial", 0, len(X)-1, 0)
             
         with col_viz_2:
-            # 2. Select Feature (Channel) - THIS IS THE NEW DROP DOWN
             sel_channel = st.selectbox("Select Feature (Channel)", feature_names, index=0, key="viz_chan_sel")
         
-        # Convert the selected Name (e.g., "T7") to Index (e.g., 4)
         ch_idx_viz = feature_names.index(sel_channel)
         
-        # --- PREPARE DATA FOR PLOTTING ---
-        # Raw Data (Continuous values)
         raw_sig = X_raw[sel_sample, :, ch_idx_viz].numpy()
-        
-        # Encoded Data (Discrete Spikes: -1, 0, 1)
         spike_sig = X[sel_sample, :, ch_idx_viz].numpy()
         
-        # --- PLOTTING LOGIC ---
-        # Create two subplots sharing the X-axis (Time)
         fig, (ax1, ax2) = plt.subplots(2, 1, sharex=True, figsize=(10, 3.5), gridspec_kw={'height_ratios': [2, 1]})
         
-        # Plot 1: Raw Signal
         ax1.plot(raw_sig, color='#1E90FF', linewidth=1.0, label='Raw Input')
         ax1.set_ylabel(" Signal Values")
         ax1.set_title(f"Feature {sel_channel} (Trial {sel_sample})")
         ax1.grid(True, alpha=0.5)
         ax1.legend(loc='upper right')
         
-        # Plot 2: Spikes 
-        # Using a stem plot to clearly show discrete events
         markerline, stemlines, baseline = ax2.stem(
             np.arange(len(spike_sig)), 
             spike_sig, 
             linefmt='#1E90FF', 
-            markerfmt=' ', # You can change 'o' to ' ' if you want bars only (no dots)
+            markerfmt=' ',
             basefmt='gray'
         )
         
-        # Style the lines to be thin and clean
         plt.setp(stemlines, 'linewidth', 1.2)
-        #plt.setp(markerline, 'markersize', 2)
         plt.setp(baseline, 'linewidth', 0.1, 'alpha', 0.1)
         
         ax2.set_ylabel("Spike State")
         ax2.set_xlabel("Time Steps")
-        
-        # --- KEY CHANGES HERE ---
-        ax2.set_yticks([])   # Only show 0 and 1 on the axis
-        #ax2.set_ylim(-0.1, 1.25) # Crop out the negative space (-1) completely
-        # ------------------------
-        
+        ax2.set_yticks([])
         ax2.set_title("Output Spikes") 
-        #ax2.grid(True, alpha=0.3)
         
         plt.tight_layout()
         st.pyplot(fig)
 
     st.divider()
     
-    #st.header("NeuCube Spatio-temporal Learning")
     st.markdown("""
         <h2 style='font-size: 24px;'> NeuCube Spatio-temporal Learning </h2>
     """, unsafe_allow_html=True)
     
-    #SENSOR VISUALIZATION
-    # Define Standard 10-20 Coordinates
     if st.button("NeuCube Initialisation & Mapping"):
         st.session_state['map_initialised'] = True
-    # Render the Map only if initialized
+
     if st.session_state.get('map_initialised', False):
-        
-        # --- DATA PREPARATION ---
         STANDARD_10_20 = {
             "AF3": [-30, 50, 30], "O2": [20, -90, 10],
             "F7": [-50, 30, 0], "P8": [60, -60, 0],
@@ -658,16 +637,13 @@ if st.session_state.get('data_ready', False):
                 np.zeros(len(feature_names)),
             ])
 
-        # --- VIEW CONTROL ---
         with st.expander("Schematic Brain Template", expanded=True):
             col_ctrl_1, col_ctrl_2 = st.columns([1, 4])
             with col_ctrl_1:
                 clean_view = st.toggle("Grid & Axes", value=True)
 
-            # --- PLOTTING ---
             fig_3d = go.Figure()
 
-            # Electrodes
             fig_3d.add_trace(go.Scatter3d(
                 x=plot_coords[:, 0], y=plot_coords[:, 1], z=plot_coords[:, 2],
                 mode='markers+text',
@@ -678,7 +654,6 @@ if st.session_state.get('data_ready', False):
                 name="Electrodes"
             ))
 
-            # Ghost Head Model
             if use_eeg_template:
                 phi = np.linspace(0, 2*np.pi, 20)
                 theta = np.linspace(0, np.pi, 10)
@@ -693,7 +668,6 @@ if st.session_state.get('data_ready', False):
                     color='gray', opacity=0.2, name='Head Model', alphahull=0 
                 ))
 
-            # Layout Logic
             if clean_view:
                 grid_status = False
                 axis_range = [-100, 100]
@@ -717,36 +691,26 @@ if st.session_state.get('data_ready', False):
             st.plotly_chart(fig_3d, use_container_width=True)
 
 
-    # ==========================================
-    # B. SIMULATION LOGIC (COMES SECOND)
-    # ==========================================
-    
-    # We only show the Run Simulation button if the map has been initialized
     if st.session_state.get('map_initialised', False):
-        st.divider() # Visual separation
+        st.divider()
         
         col_sim_1, col_sim_2 = st.columns([1, 3])
         
         with col_sim_1:
-            # Add some vertical padding so the button aligns nicely
             st.write("") 
             st.write("")
             run_sim = st.button("▶ Run NeuCube Simulation")
 
         if run_sim:
             with col_sim_2:
-                # 1. Create a placeholder for the "Thinking Brain" animation
                 brain_placeholder = st.empty()
                 
-                # 2. Display an animated GIF in the placeholder
-                # Updated parameter: use_container_width instead of use_column_width
                 try:
-                    file_path = "brain_activity.gif" # Your filename
+                    file_path = "brain_activity.gif"
                     with open(file_path, "rb") as f:
                         contents = f.read()
                         data_url = base64.b64encode(contents).decode("utf-8")
 
-                    # Inject HTML to force the GIF to play
                     brain_placeholder.markdown(
                         f'<img src="data:image/gif;base64,{data_url}" width="300" style="border-radius: 10px;">',
                         unsafe_allow_html=True,
@@ -754,15 +718,11 @@ if st.session_state.get('data_ready', False):
                 except FileNotFoundError:
                     brain_placeholder.info("🧠 NeuCube is thinking... (GIF not found)")
 
-                # 3. Run the heavy computation
                 with st.spinner("Spatio-temporal Training..."):
-                    
-                    # Initialize Reservoir
                     res = Reservoir(inputs=X.shape[2], c=res_c, l=res_l)
                     learning_rule = STDP(a_pos=stdp_pos, a_neg=stdp_neg)
                     sam = SpikeCount()
 
-                    # Simulate
                     s_act_all = res.simulate(
                         X,
                         train=True,                  
@@ -772,11 +732,9 @@ if st.session_state.get('data_ready', False):
                         verbose=True 
                     )
 
-                    # B. Extraction (Step 3 Logic - done here to save state)
                     state_vectors_all = sam.sample(s_act_all)
                     snn_features = extract_features(state_vectors_all, res.w_in)
                     
-                    # Save everything
                     st.session_state['snn_features'] = snn_features
                     st.session_state['features_ready'] = True
                 
@@ -785,20 +743,13 @@ if st.session_state.get('data_ready', False):
             st.success("Simulation Complete!")
 
 
-    # ==========================================
-    # STEP 3: FEATURES EXTRACTION (Visual Section)
-    # ==========================================
-    
-    # This block is UN-INDENTED so it sits outside the button logic
     if st.session_state.get('features_ready', False):
         st.divider()
-        #st.header("Spiking Feature Extraction")
         st.markdown("""
                 <h2 style='font-size: 24px;'> Spiking Feature Extraction </h2>
         """, unsafe_allow_html=True)
         st.caption("Trained spike frequency state vectors.")
         
-        # Display the Shape (The proof that Step 3 is done)
         st.write(f"**Extracted Features Shape:** {st.session_state['snn_features'].shape}")
 
         features_df = pd.DataFrame(st.session_state['snn_features'], columns=feature_names)
@@ -811,22 +762,14 @@ if st.session_state.get('data_ready', False):
             mime="text/csv",
         )
         
-        # Optional: Add a plot here if you want to visualize the features
-        ##with st.expander("Inspect Feature Vector"):
-            ##st.bar_chart(st.session_state['snn_features'][0])
-             
-
-    # Check if features are ready
     if st.session_state.get('features_ready', False):
         snn_features = st.session_state['snn_features']
         
         st.divider()
-        #st.header("Classification")
         st.markdown("""
                 <h2 style='font-size: 24px;'> Classification </h2>
         """, unsafe_allow_html=True)
         
-        # 1. Prepare Data
         available_classes = sorted(pd.Series(y).dropna().unique(), key=str)
         classifier_name = st.selectbox(
             "Classifier",
@@ -875,10 +818,8 @@ if st.session_state.get('data_ready', False):
         col1, col2 = st.columns(2)
         col1.write(f"**Classifier Input Shape:** {X_final.shape}")
         
-        # Show Names in UI
         col2.write(f"**Selected Features:** {', '.join(map(str, selected_feature_names))}")
 
-        # 2. Visualise Quantum Circuit
         if classifier_name == "Quantum Kernel SVM":
             with st.expander("View Quantum Kernel Circuit"):
                 try:
@@ -887,7 +828,6 @@ if st.session_state.get('data_ready', False):
                 except Exception as e:
                     st.warning(f"Circuit visualization error: {e}")
 
-        # 3. Classification
         if st.button("Run Cross-Validation"):
             class_counts = pd.Series(y_final).value_counts()
             effective_folds = min(k_folds, int(class_counts.min()))
@@ -928,7 +868,6 @@ if st.session_state.get('data_ready', False):
 
             status_txt.text("Validation Complete.")
             
-            # --- FINAL METRICS ---
             final_acc = accuracy(y_total2, pred_total2)
             final_f1 = f1_score(y_total2, pred_total2, average="weighted", zero_division=0)
             metric_col_1, metric_col_2 = st.columns(2)
@@ -951,8 +890,7 @@ if st.session_state.get('data_ready', False):
                 mime="text/csv",
             )
             
-            # --- CONFUSION MATRIX ---
-            st.markdown("##### Confusion Matrix")   # smaller than subheader
+            st.markdown("##### Confusion Matrix")
             
             cm = confusion_matrix(y_total2, pred_total2)
             unique_labels = sorted(list(set(y_total2)), key=str)
@@ -971,35 +909,3 @@ if st.session_state.get('data_ready', False):
                 ax_cm.tick_params(axis='both', labelsize=6)
                 
                 st.pyplot(fig_cm, width='content')
-                
-                
-st.divider()
-
-with st.expander("📂 Data & Material"):
-    st.markdown("""
-    :blue[👉 **Data Availability:**]
-    The EEG dataset and NeuCube software environment are kindly made available from the Auckland University of Technology at: [https://kedri.aut.ac.nz/neucube].
- 
-    :blue[👉 **Code Availability:**]
-    The complete source code for the **SNN-QC** toolbox is kindly made available in the GitHub at: [https://github.com/ravik-jha/SNN-QC].  
-    """)                
-               
-# --- REFERENCES SECTION ---
-st.divider()
-
-with st.expander("📚 References & Acknowledgement"):
-    st.markdown("""
-    :blue[**References**]
-    
-    [1]. Jha, R. K., Kasabov, N., Bhattacharyya, S., Coyle, D., & Prasad, G. (2025). A hybrid spiking neural network-quantum framework for spatio-temporal data classification: a case study on EEG data. 
-      EPJ Quantum Technology, 12(1), 1-23. [https://doi.org/10.1140/epjqt/s40507-025-00443-1]
-      
-    [2]. Kasabov, N. (2014). NeuCube: A spiking neural network architecture for mapping, learning and understanding of spatio-temporal brain data. Neural networks, 52, 62-76. [https://doi.org/10.1016/j.neunet.2014.01.006] 
-    
-    :blue[**Acknowledgement**]
-    
-    This toolbox demonstration was developed as part of the research conducted at the Intelligent Systems Research Centre, Ulster University. 
-    It is intended solely for academic research and demonstration purposes. This is a foundational prototype; all rights regarding future development and commercial 
-    utilization are reserved and subject to copyright.
-
-    """)
