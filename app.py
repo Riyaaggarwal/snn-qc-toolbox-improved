@@ -1242,7 +1242,7 @@ if st.session_state.get("data_ready"):
                     _pre = PCA(n_components=50, random_state=seed_val).fit_transform(_snn_scaled)
                 _coords = TSNE(
                     n_components=2, random_state=seed_val,
-                    perplexity=_n_perp, n_iter=500, init="pca",
+                    perplexity=_n_perp, max_iter=500, init="pca",
                 ).fit_transform(_pre)
                 _proj_caption = f"t-SNE  ·  perplexity={_n_perp}"
 
