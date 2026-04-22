@@ -1,5 +1,6 @@
 import base64
 import datetime
+import inspect
 import json
 from pathlib import Path
 import random
@@ -1370,21 +1371,30 @@ if st.session_state.get("data_ready"):
 
         with st.spinner(f"Computing {_proj_method} projection…"):
             if _proj_method == "PCA":
-                _pca = PCA(n_components=2, random_state=seed_val)
-                _coords = _pca.fit_transform(_snn_scaled)
-                _proj_caption = (
-                    f"Explained variance — PC1: {_pca.explained_variance_ratio_[0]:.1%}, "
-                    f"PC2: {_pca.explained_variance_ratio_[1]:.1%}"
-                )
+                if min(_snn_scaled.shape) < 2:
+                    _coords = np.column_stack([_snn_scaled[:, 0], np.zeros(_snn_scaled.shape[0])])
+                    _proj_caption = "One-dimensional feature space — plotted on a single horizontal axis."
+                else:
+                    _pca = PCA(n_components=2, random_state=seed_val)
+                    _coords = _pca.fit_transform(_snn_scaled)
+                    _proj_caption = (
+                        f"Explained variance — PC1: {_pca.explained_variance_ratio_[0]:.1%}, "
+                        f"PC2: {_pca.explained_variance_ratio_[1]:.1%}"
+                    )
             else:
                 _n_perp = min(30, max(5, _snn_scaled.shape[0] // 4))
                 _pre = _snn_scaled
                 if _snn_scaled.shape[1] > 50:
                     _pre = PCA(n_components=50, random_state=seed_val).fit_transform(_snn_scaled)
-                _coords = TSNE(
-                    n_components=2, random_state=seed_val,
-                    perplexity=_n_perp, max_iter=500, init="pca",
-                ).fit_transform(_pre)
+                _tsne_kwargs = {
+                    "n_components": 2,
+                    "random_state": seed_val,
+                    "perplexity": _n_perp,
+                    "init": "pca" if min(_pre.shape) >= 2 else "random",
+                }
+                _tsne_iter_key = "max_iter" if "max_iter" in inspect.signature(TSNE).parameters else "n_iter"
+                _tsne_kwargs[_tsne_iter_key] = 500
+                _coords = TSNE(**_tsne_kwargs).fit_transform(_pre)
                 _proj_caption = f"t-SNE  ·  perplexity={_n_perp}"
 
         _cls_unique = sorted(set(y.tolist() if hasattr(y, "tolist") else list(y)), key=str)
