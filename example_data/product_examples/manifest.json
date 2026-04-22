@@ -1,0 +1,68 @@
+[
+  {
+    "key": "wearable_basic_motions",
+    "name": "Wearable motion recognition",
+    "category": "Wearable sensor data",
+    "description": "Smartwatch accelerometer and gyroscope signals for standing, running, walking, and badminton.",
+    "source_dataset": "BasicMotions",
+    "source_url": "https://www.timeseriesclassification.com/aeon-toolkit/BasicMotions.zip",
+    "file": "wearable_basic_motions.csv",
+    "samples": 24,
+    "timepoints": 100,
+    "features": 6,
+    "class_counts": {
+      "Badminton": 6,
+      "Running": 6,
+      "Standing": 6,
+      "Walking": 6
+    }
+  },
+  {
+    "key": "industrial_wafer",
+    "name": "Industrial wafer fault screening",
+    "category": "Industrial sensor monitoring",
+    "description": "Semiconductor wafer process sensor traces with normal and faulty patterns.",
+    "source_dataset": "Wafer",
+    "source_url": "https://www.timeseriesclassification.com/aeon-toolkit/Wafer.zip",
+    "file": "industrial_wafer.csv",
+    "samples": 24,
+    "timepoints": 152,
+    "features": 1,
+    "class_counts": {
+      "fault_pattern": 12,
+      "normal_pattern": 12
+    }
+  },
+  {
+    "key": "healthcare_ecg200",
+    "name": "Healthcare ECG morphology",
+    "category": "Healthcare signal screening",
+    "description": "ECG beat-shape time series with two morphology classes.",
+    "source_dataset": "ECG200",
+    "source_url": "https://www.timeseriesclassification.com/aeon-toolkit/ECG200.zip",
+    "file": "healthcare_ecg200.csv",
+    "samples": 24,
+    "timepoints": 96,
+    "features": 1,
+    "class_counts": {
+      "ecg_class_negative": 12,
+      "ecg_class_positive": 12
+    }
+  },
+  {
+    "key": "iot_robot_surface",
+    "name": "IoT robot surface sensing",
+    "category": "IoT anomaly/event classification",
+    "description": "Embedded robot sensor traces used to classify surface or movement states.",
+    "source_dataset": "SonyAIBORobotSurface1",
+    "source_url": "https://www.timeseriesclassification.com/aeon-toolkit/SonyAIBORobotSurface1.zip",
+    "file": "iot_robot_surface.csv",
+    "samples": 18,
+    "timepoints": 70,
+    "features": 1,
+    "class_counts": {
+      "surface_state_a": 6,
+      "surface_state_b": 12
+    }
+  }
+]

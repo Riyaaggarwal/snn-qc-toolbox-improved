@@ -13,11 +13,13 @@ import torch
 import yaml
 
 from snnqc.data_loader import (
+    available_product_examples,
     combined_csv_template,
     dataframe_to_csv_bytes,
     dataset_summary,
     labels_csv_template,
     load_builtin_eeg_dataset as _load_builtin_eeg_dataset,
+    load_product_example_dataset,
     parse_combined_csv,
     parse_sample_csvs,
     read_uploaded_csv,
@@ -1024,7 +1026,7 @@ section_header(1, "Connect Your Data", "Choose a source and load your labelled t
 
 dataset_source = st.radio(
     "Data source",
-    ["Example dataset", "Single uploaded table", "Multiple sample files"],
+    ["EEG demo", "Product examples", "Single uploaded table", "Multiple sample files"],
     horizontal=True,
     label_visibility="collapsed",
 )
@@ -1036,9 +1038,41 @@ combined_config = {}
 sample_files    = []
 sample_labels_df = None
 sample_has_header = True
+product_examples = available_product_examples()
+selected_product_example = None
 
-if dataset_source == "Example dataset":
+if dataset_source == "EEG demo":
     st.info("**EEG demo dataset** — 60 wrist-movement trials, 128 timepoints, 14 EEG channels. Ready to go.")
+
+elif dataset_source == "Product examples":
+    if not product_examples:
+        st.warning("Product example datasets are not available in this build.")
+    else:
+        labels = [f"{item['category']} · {item['name']}" for item in product_examples]
+        selected_label = st.selectbox("Choose a public example", labels)
+        selected_product_example = product_examples[labels.index(selected_label)]
+        st.info(
+            f"**{selected_product_example['name']}** — {selected_product_example['description']} "
+            f"Source: {selected_product_example['source_dataset']}."
+        )
+        e1, e2, e3 = st.columns(3)
+        e1.metric("Samples", selected_product_example["samples"])
+        e2.metric("Timepoints", selected_product_example["timepoints"])
+        e3.metric("Features", selected_product_example["features"])
+        st.caption(
+            "Classes: "
+            + ", ".join(
+                f"{label} ({count})"
+                for label, count in selected_product_example["class_counts"].items()
+            )
+        )
+        prev_X, prev_y, prev_feats, prev_meta, prev_err = load_product_example_dataset(
+            selected_product_example["key"]
+        )
+        if prev_err:
+            st.warning(prev_err)
+        else:
+            render_dataset_preview(prev_X, prev_y, prev_feats)
 
 elif dataset_source == "Single uploaded table":
     st.caption("One row per sample-timepoint. Columns: sample ID, label, numeric features.")
@@ -1103,9 +1137,19 @@ elif dataset_source == "Multiple sample files":
 if st.button("Prepare Dataset", type="primary"):
     err = None
     with st.spinner("Loading and encoding dataset…"):
-        if dataset_source == "Example dataset":
+        if dataset_source == "EEG demo":
             X_raw, y_data, feature_names, err = load_builtin_eeg_dataset()
             dataset_name = "Example EEG dataset"
+
+        elif dataset_source == "Product examples":
+            if selected_product_example is None:
+                err = "Choose a product example first."
+                X_raw = y_data = feature_names = None
+            else:
+                X_raw, y_data, feature_names, example_meta, err = load_product_example_dataset(
+                    selected_product_example["key"]
+                )
+            dataset_name = selected_product_example["name"] if selected_product_example else "Product example"
 
         elif dataset_source == "Single uploaded table":
             if combined_df is None:

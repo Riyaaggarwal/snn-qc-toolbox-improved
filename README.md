@@ -15,6 +15,7 @@ Intelligent Systems Research Centre, Ulster University — **Jha-R@ulster.ac.uk*
 ## Features
 
 - Upload labelled time-series data or explore with the built-in EEG demo (60 trials, 128 timepoints, 14 channels).
+- Try curated public examples for wearables, industrial process monitoring, ECG screening, and robot/IoT sensors.
 - Preview data shape and class balance before analysis.
 - Delta-encode signals, simulate a NeuCube reservoir, and extract spiking feature vectors.
 - Compare Classical SVM, Logistic Regression, and an experimental Quantum Kernel SVM.
@@ -85,6 +86,26 @@ defaults:
   reservoir_l: 0.169                # distance decay for connectivity
   random_seed: 42                   # reproducibility seed
   max_displayed_features: 14        # default features pre-selected in model report
+```
+
+---
+
+## Built-in public examples
+
+The **Product examples** source includes compact, balanced subsets from the
+[UEA/UCR Time Series Classification Archive](https://www.timeseriesclassification.com/):
+
+| Product area | Dataset | Shape in app | Why it is useful |
+|--------------|---------|--------------|------------------|
+| Wearable sensor data | BasicMotions | 24 samples × 100 timepoints × 6 axes | Smartwatch accelerometer and gyroscope movement classification |
+| Industrial sensor monitoring | Wafer | 24 samples × 152 timepoints × 1 sensor | Normal vs faulty semiconductor wafer process traces |
+| Healthcare signal screening | ECG200 | 24 samples × 96 timepoints × 1 ECG lead | Heartbeat morphology classification |
+| IoT / robot sensing | SonyAIBORobotSurface1 | 18 samples × 70 timepoints × 1 sensor | Robot surface-state classification from embedded sensor traces |
+
+Regenerate these files with:
+
+```bash
+python scripts/build_public_examples.py
 ```
 
 ---

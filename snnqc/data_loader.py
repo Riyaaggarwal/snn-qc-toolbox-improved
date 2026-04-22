@@ -1,4 +1,5 @@
 from pathlib import Path
+import json
 
 import numpy as np
 import pandas as pd
@@ -6,6 +7,7 @@ import torch
 
 _HERE = Path(__file__).parent
 _DEFAULT_DATA_PATH = _HERE.parent / "example_data" / "wrist_movement_eeg"
+_PRODUCT_EXAMPLES_PATH = _HERE.parent / "example_data" / "product_examples"
 
 DEFAULT_FEATURE_NAMES = [
     "AF3*", "F7*", "F3*", "FC5*", "T7*", "P7*", "O1*",
@@ -108,6 +110,41 @@ def load_builtin_eeg_dataset(base_path=None):
         f"Feature {i + 1}" for i in range(n_features)
     ]
     return X_raw, y_all, feature_names, None
+
+
+def available_product_examples(base_path=None):
+    data_dir = Path(base_path) if base_path else _PRODUCT_EXAMPLES_PATH
+    manifest_path = data_dir / "manifest.json"
+    if not manifest_path.exists():
+        return []
+    return json.loads(manifest_path.read_text(encoding="utf-8"))
+
+
+def load_product_example_dataset(key, base_path=None):
+    data_dir = Path(base_path) if base_path else _PRODUCT_EXAMPLES_PATH
+    examples = available_product_examples(data_dir)
+    example = next((item for item in examples if item.get("key") == key), None)
+    if example is None:
+        return None, None, None, None, f"Product example not found: {key}"
+
+    csv_path = data_dir / example["file"]
+    if not csv_path.exists():
+        return None, None, None, None, f"Product example file not found: {csv_path}"
+
+    try:
+        df = pd.read_csv(csv_path)
+    except Exception as exc:
+        return None, None, None, None, f"Error reading product example: {exc}"
+
+    feature_cols = [col for col in df.columns if col not in {"sample_id", "time", "label"}]
+    X_raw, y_data, feature_names, err = parse_combined_csv(
+        df,
+        sample_col="sample_id",
+        label_col="label",
+        time_col="time",
+        feature_cols=feature_cols,
+    )
+    return X_raw, y_data, feature_names, example, err
 
 
 def read_uploaded_csv(uploaded_file, has_header):
