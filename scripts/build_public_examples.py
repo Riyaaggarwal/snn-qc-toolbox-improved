@@ -43,6 +43,7 @@ DATASETS = [
         "parser": "ucr_txt",
         "max_per_class": 12,
         "feature_prefix": "wafer_signal",
+        "segments": 8,
         "label_map": {"-1": "fault_pattern", "1": "normal_pattern"},
         "description": "Semiconductor wafer process sensor traces with normal and faulty patterns.",
     },
@@ -56,6 +57,7 @@ DATASETS = [
         "parser": "ucr_txt",
         "max_per_class": 12,
         "feature_prefix": "ecg_lead",
+        "segments": 6,
         "label_map": {"-1": "ecg_class_negative", "1": "ecg_class_positive"},
         "description": "ECG beat-shape time series with two morphology classes.",
     },
@@ -69,6 +71,7 @@ DATASETS = [
         "parser": "ucr_txt",
         "max_per_class": 12,
         "feature_prefix": "robot_sensor",
+        "segments": 5,
         "label_map": {"1": "surface_state_a", "2": "surface_state_b"},
         "description": "Embedded robot sensor traces used to classify surface or movement states.",
     },
@@ -93,7 +96,12 @@ def _balanced_take(rows: list[tuple[str, list[list[float]]]], max_per_class: int
     return selected
 
 
-def _parse_ucr_txt(text: str, label_map: dict[str, str] | None, feature_prefix: str):
+def _parse_ucr_txt(
+    text: str,
+    label_map: dict[str, str] | None,
+    feature_prefix: str,
+    segments: int = 1,
+):
     rows = []
     for line in text.splitlines():
         parts = line.split()
@@ -101,9 +109,22 @@ def _parse_ucr_txt(text: str, label_map: dict[str, str] | None, feature_prefix: 
             continue
         raw_label = str(int(float(parts[0])))
         label = label_map.get(raw_label, raw_label) if label_map else raw_label
-        values = [[float(value)] for value in parts[1:]]
+        flat_values = [float(value) for value in parts[1:]]
+        if segments > 1:
+            usable_length = (len(flat_values) // segments) * segments
+            trimmed = flat_values[:usable_length]
+            segment_length = usable_length // segments
+            values = [
+                [trimmed[time_idx + segment_idx * segment_length] for segment_idx in range(segments)]
+                for time_idx in range(segment_length)
+            ]
+        else:
+            values = [[value] for value in flat_values]
         rows.append((label, values))
-    feature_names = [feature_prefix]
+    feature_names = (
+        [f"{feature_prefix}_segment_{idx + 1}" for idx in range(segments)]
+        if segments > 1 else [feature_prefix]
+    )
     return rows, feature_names
 
 
@@ -158,6 +179,7 @@ def main() -> None:
                     source_text,
                     dataset.get("label_map"),
                     dataset["feature_prefix"],
+                    dataset.get("segments", 1),
                 )
 
             rows = _balanced_take(rows, dataset["max_per_class"])

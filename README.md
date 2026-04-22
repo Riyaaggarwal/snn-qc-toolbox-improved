@@ -98,9 +98,9 @@ The **Product examples** source includes compact, balanced subsets from the
 | Product area | Dataset | Shape in app | Why it is useful |
 |--------------|---------|--------------|------------------|
 | Wearable sensor data | BasicMotions | 24 samples × 100 timepoints × 6 axes | Smartwatch accelerometer and gyroscope movement classification |
-| Industrial sensor monitoring | Wafer | 24 samples × 152 timepoints × 1 sensor | Normal vs faulty semiconductor wafer process traces |
-| Healthcare signal screening | ECG200 | 24 samples × 96 timepoints × 1 ECG lead | Heartbeat morphology classification |
-| IoT / robot sensing | SonyAIBORobotSurface1 | 18 samples × 70 timepoints × 1 sensor | Robot surface-state classification from embedded sensor traces |
+| Industrial sensor monitoring | Wafer | 24 samples × 19 timepoints × 8 temporal segments | Normal vs faulty semiconductor wafer process traces |
+| Healthcare signal screening | ECG200 | 24 samples × 16 timepoints × 6 temporal segments | Heartbeat morphology classification |
+| IoT / robot sensing | SonyAIBORobotSurface1 | 18 samples × 14 timepoints × 5 temporal segments | Robot surface-state classification from embedded sensor traces |
 
 Regenerate these files with:
 

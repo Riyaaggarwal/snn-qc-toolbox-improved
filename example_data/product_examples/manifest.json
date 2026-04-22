@@ -26,8 +26,8 @@
     "source_url": "https://www.timeseriesclassification.com/aeon-toolkit/Wafer.zip",
     "file": "industrial_wafer.csv",
     "samples": 24,
-    "timepoints": 152,
-    "features": 1,
+    "timepoints": 19,
+    "features": 8,
     "class_counts": {
       "fault_pattern": 12,
       "normal_pattern": 12
@@ -42,8 +42,8 @@
     "source_url": "https://www.timeseriesclassification.com/aeon-toolkit/ECG200.zip",
     "file": "healthcare_ecg200.csv",
     "samples": 24,
-    "timepoints": 96,
-    "features": 1,
+    "timepoints": 16,
+    "features": 6,
     "class_counts": {
       "ecg_class_negative": 12,
       "ecg_class_positive": 12
@@ -58,8 +58,8 @@
     "source_url": "https://www.timeseriesclassification.com/aeon-toolkit/SonyAIBORobotSurface1.zip",
     "file": "iot_robot_surface.csv",
     "samples": 18,
-    "timepoints": 70,
-    "features": 1,
+    "timepoints": 14,
+    "features": 5,
     "class_counts": {
       "surface_state_a": 6,
       "surface_state_b": 12
